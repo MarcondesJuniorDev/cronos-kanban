@@ -275,7 +275,21 @@ class KanbanController extends Controller
             'file' => 'required|file|mimes:json',
         ]);
 
-        $json = file_get_contents($request->file('file')->getRealPath());
+        $file = $request->file('file');
+        if (! $file) {
+            return back()->withErrors(['file' => 'Arquivo não encontrado.']);
+        }
+
+        $filePath = $file->getRealPath();
+        if ($filePath === false) {
+            return back()->withErrors(['file' => 'Caminho do arquivo inválido.']);
+        }
+
+        $json = file_get_contents($filePath);
+        if ($json === false) {
+            return back()->withErrors(['file' => 'Não foi possível ler o conteúdo do arquivo.']);
+        }
+
         $data = json_decode($json, true);
 
         if (! $data || ! is_array($data)) {
