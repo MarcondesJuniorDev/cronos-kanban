@@ -16,7 +16,10 @@ import {
     Archive,
     Download,
     Upload,
-    BarChart3
+    BarChart3,
+    ChevronLeft,
+    ChevronRight,
+    Calendar
 } from '@lucide/vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
@@ -703,10 +706,106 @@ const deleteSubtask = (id: number) => {
 
 const getCompletedSubtasksCount = (task: Task) => {
     if (!task.subtasks) {
-return 0;
-}
+        return 0;
+    }
 
     return task.subtasks.filter((s: Subtask) => s.is_completed).length;
+};
+
+const currentView = ref<'kanban' | 'calendar'>('kanban');
+const calendarDate = ref(new Date());
+
+const currentYear = computed(() => calendarDate.value.getFullYear());
+const currentMonth = computed(() => calendarDate.value.getMonth());
+
+const monthNames = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
+
+const nextMonth = () => {
+    calendarDate.value = new Date(currentYear.value, currentMonth.value + 1, 1);
+};
+
+const prevMonth = () => {
+    calendarDate.value = new Date(currentYear.value, currentMonth.value - 1, 1);
+};
+
+const goToToday = () => {
+    calendarDate.value = new Date();
+};
+
+const getTasksForDate = (dateStr: string) => {
+    const tasks: Task[] = [];
+    localColumns.value.forEach(column => {
+        column.tasks.forEach(task => {
+            if (task.due_date === dateStr) {
+                tasks.push(task);
+            }
+        });
+    });
+
+    return tasks.filter(matchesFilter);
+};
+
+const calendarDays = computed(() => {
+    const year = currentYear.value;
+    const month = currentMonth.value;
+
+    const firstDay = new Date(year, month, 1);
+    const startDayOfWeek = firstDay.getDay();
+
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    const prevMonthTotalDays = new Date(year, month, 0).getDate();
+
+    const days: { dateStr: string; dayNum: number; isCurrentMonth: boolean; tasks: Task[] }[] = [];
+
+    // Add days of the previous month
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+        const d = prevMonthTotalDays - i;
+        const prevMonthDate = new Date(year, month - 1, d);
+        const dateStr = prevMonthDate.toISOString().split('T')[0];
+        days.push({
+            dateStr,
+            dayNum: d,
+            isCurrentMonth: false,
+            tasks: getTasksForDate(dateStr)
+        });
+    }
+
+    // Add days of the current month
+    for (let d = 1; d <= totalDays; d++) {
+        const currentDate = new Date(year, month, d);
+        const dateStr = currentDate.toISOString().split('T')[0];
+        days.push({
+            dateStr,
+            dayNum: d,
+            isCurrentMonth: true,
+            tasks: getTasksForDate(dateStr)
+        });
+    }
+
+    // Fill the rest with days of the next month
+    const remainingCells = 42 - days.length;
+
+    for (let d = 1; d <= remainingCells; d++) {
+        const nextMonthDate = new Date(year, month + 1, d);
+        const dateStr = nextMonthDate.toISOString().split('T')[0];
+        days.push({
+            dateStr,
+            dayNum: d,
+            isCurrentMonth: false,
+            tasks: getTasksForDate(dateStr)
+        });
+    }
+
+    return days;
+});
+
+const isDateToday = (dateStr: string) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    return dateStr === todayStr;
 };
 </script>
 
@@ -830,7 +929,35 @@ return 0;
                 </div>
                 
                 <div class="flex flex-wrap items-center gap-3">
-                    <span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Filtrar por Prioridade:</span>
+                    <span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Visualização:</span>
+                    <div class="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-zinc-200/50 dark:border-zinc-700/50">
+                        <button
+                            @click="currentView = 'kanban'"
+                            :class="[
+                                'px-3 py-1 text-xs font-medium rounded-md transition duration-150 flex items-center gap-1.5 cursor-pointer',
+                                currentView === 'kanban'
+                                    ? 'bg-white text-zinc-900 shadow-2xs dark:bg-zinc-700 dark:text-zinc-100'
+                                    : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+                            ]"
+                        >
+                            <Kanban class="size-3.5" />
+                            Quadro
+                        </button>
+                        <button
+                            @click="currentView = 'calendar'"
+                            :class="[
+                                'px-3 py-1 text-xs font-medium rounded-md transition duration-150 flex items-center gap-1.5 cursor-pointer',
+                                currentView === 'calendar'
+                                    ? 'bg-white text-zinc-900 shadow-2xs dark:bg-zinc-700 dark:text-zinc-100'
+                                    : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+                            ]"
+                        >
+                            <Calendar class="size-3.5" />
+                            Calendário
+                        </button>
+                    </div>
+
+                    <span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider ml-2">Filtrar por Prioridade:</span>
                     <div class="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-zinc-200/50 dark:border-zinc-700/50">
                         <button
                             v-for="p in ['all', 'low', 'medium', 'high'] as const"
@@ -883,171 +1010,267 @@ return 0;
                     @click="selectedFilterTags = []"
                     class="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium transition cursor-pointer select-none ml-2"
                 >
-                    Limpar Filtros
                 </button>
             </div>
         </div>
 
-        <!-- Kanban Board Horizontal Scroll Container -->
+        <!-- Kanban / Calendar Board Container -->
         <div class="flex-1 min-h-0">
-            <div v-if="hasColumns" class="flex gap-6 overflow-x-auto pb-6 pt-2 items-start select-none scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800">
-                
-                <draggable 
-                    v-model="localColumns" 
-                    group="columns" 
-                    item-key="id" 
-                    handle=".column-drag-handle"
-                    ghost-class="column-ghost" 
-                    drag-class="column-drag"
-                    class="flex gap-6 items-start"
-                    @change="handleColumnDragChange"
-                >
-                    <template #item="{ element: col }">
-                        <div class="w-[320px] shrink-0 flex flex-col rounded-xl border border-zinc-200/80 bg-zinc-100/70 p-4 transition-all duration-300 shadow-xs hover:shadow-md dark:border-zinc-800/80 dark:bg-zinc-900/30 dark:backdrop-blur-md max-h-[75vh]">
-                            
-                            <!-- Column Header -->
-                            <div class="mb-4 flex items-center justify-between">
-                                <div class="flex items-center gap-1.5 min-w-0">
-                                    <span class="column-drag-handle p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing shrink-0 transition duration-150">
-                                        <GripVertical class="size-4" />
-                                    </span>
-                                    <h3 class="font-bold text-zinc-800 dark:text-zinc-200 truncate text-sm tracking-tight">{{ col.name }}</h3>
-                                    <Badge variant="secondary" class="bg-zinc-200/60 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 font-semibold px-2 py-0.5 text-[10px] rounded-full shrink-0">
-                                        <span v-if="searchQuery || selectedPriority !== 'all'">{{ col.tasks.filter(matchesFilter).length }} / </span>{{ col.tasks.length }}
-                                    </Badge>
-                                </div>
+            <template v-if="hasColumns">
+                <!-- Kanban View -->
+                <div v-if="currentView === 'kanban'" class="flex gap-6 overflow-x-auto pb-6 pt-2 items-start select-none scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800">
+                    
+                    <draggable 
+                        v-model="localColumns" 
+                        group="columns" 
+                        item-key="id" 
+                        handle=".column-drag-handle"
+                        ghost-class="column-ghost" 
+                        drag-class="column-drag"
+                        class="flex gap-6 items-start"
+                        @change="handleColumnDragChange"
+                    >
+                        <template #item="{ element: col }">
+                            <div class="w-[320px] shrink-0 flex flex-col rounded-xl border border-zinc-200/80 bg-zinc-100/70 p-4 transition-all duration-300 shadow-xs hover:shadow-md dark:border-zinc-800/80 dark:bg-zinc-900/30 dark:backdrop-blur-md max-h-[75vh]">
                                 
-                                <Button @click="openDeleteConfirm('column', col.id, col.name)" variant="ghost" size="icon" class="h-6 w-6 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-md transition duration-150 shrink-0">
-                                    <X class="size-4" />
-                                </Button>
-                            </div>
+                                <!-- Column Header -->
+                                <div class="mb-4 flex items-center justify-between">
+                                    <div class="flex items-center gap-1.5 min-w-0">
+                                        <span class="column-drag-handle p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing shrink-0 transition duration-150">
+                                            <GripVertical class="size-4" />
+                                        </span>
+                                        <h3 class="font-bold text-zinc-800 dark:text-zinc-200 truncate text-sm tracking-tight">{{ col.name }}</h3>
+                                        <Badge variant="secondary" class="bg-zinc-200/60 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 font-semibold px-2 py-0.5 text-[10px] rounded-full shrink-0">
+                                            <span v-if="searchQuery || selectedPriority !== 'all'">{{ col.tasks.filter(matchesFilter).length }} / </span>{{ col.tasks.length }}
+                                        </Badge>
+                                    </div>
+                                    
+                                    <Button @click="openDeleteConfirm('column', col.id, col.name)" variant="ghost" size="icon" class="h-6 w-6 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-md transition duration-150 shrink-0">
+                                        <X class="size-4" />
+                                    </Button>
+                                </div>
 
-                            <!-- Tasks Draggable Area -->
-                            <draggable 
-                                v-model="col.tasks" 
-                                group="tasks" 
-                                item-key="id" 
-                                class="mb-4 flex-1 space-y-3 drop-zone overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800" 
-                                ghost-class="kanban-ghost" 
-                                drag-class="kanban-drag"
-                                @change="handleDragChange"
-                            >
-                                <template #item="{ element: t }">
-                                    <div v-show="matchesFilter(t)" class="group relative cursor-grab rounded-xl border border-zinc-200 bg-white p-4 shadow-2xs hover:shadow-md hover:border-indigo-500/50 dark:border-zinc-800/60 dark:bg-zinc-900/90 dark:hover:border-indigo-400/50 transition-all duration-200 active:cursor-grabbing">
-                                        
-                                        <!-- Hover Actions Menu -->
-                                        <div class="absolute right-2.5 top-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/90 dark:bg-zinc-900/90 p-1 rounded-md shadow-2xs border border-zinc-200 dark:border-zinc-800 backdrop-blur-xs">
-                                            <button @click.stop="openEditTaskModal(t)" class="p-1 text-zinc-400 hover:text-indigo-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition" title="Editar">
-                                                <Pencil class="size-3.5" />
-                                            </button>
-                                            <button @click.stop="archiveTask(t)" class="p-1 text-zinc-400 hover:text-amber-650 hover:bg-zinc-150 dark:hover:bg-zinc-800 rounded-md transition" title="Arquivar">
-                                                <Archive class="size-3.5" />
-                                            </button>
-                                            <button @click.stop="openDeleteConfirm('task', t.id, t.title)" class="p-1 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md transition" title="Excluir">
-                                                <Trash2 class="size-3.5" />
-                                            </button>
-                                        </div>
+                                <!-- Tasks Draggable Area -->
+                                <draggable 
+                                    v-model="col.tasks" 
+                                    group="tasks" 
+                                    item-key="id" 
+                                    class="mb-4 flex-1 space-y-3 drop-zone overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800" 
+                                    ghost-class="kanban-ghost" 
+                                    drag-class="kanban-drag"
+                                    @change="handleDragChange"
+                                >
+                                    <template #item="{ element: t }">
+                                        <div v-show="matchesFilter(t)" class="group relative cursor-grab rounded-xl border border-zinc-200 bg-white p-4 shadow-2xs hover:shadow-md hover:border-indigo-500/50 dark:border-zinc-800/60 dark:bg-zinc-900/90 dark:hover:border-indigo-400/50 transition-all duration-200 active:cursor-grabbing">
+                                            
+                                            <!-- Hover Actions Menu -->
+                                            <div class="absolute right-2.5 top-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/90 dark:bg-zinc-900/90 p-1 rounded-md shadow-2xs border border-zinc-200 dark:border-zinc-800 backdrop-blur-xs">
+                                                <button @click.stop="openEditTaskModal(t)" class="p-1 text-zinc-400 hover:text-indigo-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition" title="Editar">
+                                                    <Pencil class="size-3.5" />
+                                                </button>
+                                                <button @click.stop="archiveTask(t)" class="p-1 text-zinc-400 hover:text-amber-650 hover:bg-zinc-150 dark:hover:bg-zinc-800 rounded-md transition" title="Arquivar">
+                                                    <Archive class="size-3.5" />
+                                                </button>
+                                                <button @click.stop="openDeleteConfirm('task', t.id, t.title)" class="p-1 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md transition" title="Excluir">
+                                                    <Trash2 class="size-3.5" />
+                                                </button>
+                                            </div>
 
-                                        <!-- Card Tags -->
-                                        <div v-if="t.tags && t.tags.length" class="flex flex-wrap gap-1 mb-2 pr-12">
-                                            <span 
-                                                v-for="tag in t.tags" 
-                                                :key="tag.id"
-                                                :class="['inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold border', getTagColorConfig(tag.color).bg]"
-                                            >
-                                                {{ tag.name }}
-                                            </span>
-                                        </div>
-
-                                        <!-- Card Title -->
-                                        <h4 class="font-semibold text-zinc-900 dark:text-zinc-100 leading-snug mb-1 text-sm pr-12">
-                                            {{ t.title }}
-                                        </h4>
-                                        
-                                        <!-- Card Description -->
-                                        <p v-if="t.description" class="line-clamp-2 text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 leading-relaxed">
-                                            {{ t.description }}
-                                        </p>
-                                        
-                                        <!-- Subtask mini progress bar -->
-                                        <div v-if="t.subtasks && t.subtasks.length" class="mt-2.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-1 overflow-hidden">
-                                            <div 
-                                                class="bg-indigo-600 dark:bg-indigo-500 h-1 rounded-full transition-all duration-300"
-                                                :style="{ width: `${(getCompletedSubtasksCount(t) / t.subtasks.length) * 100}%` }"
-                                            />
-                                        </div>
-
-                                        <!-- Subtasks List on Card -->
-                                        <div v-if="t.subtasks && t.subtasks.length" class="mt-3.5 space-y-1.5 border-t border-zinc-150 dark:border-zinc-800/60 pt-2.5">
-                                            <div 
-                                                v-for="sub in t.subtasks" 
-                                                :key="sub.id" 
-                                                class="flex items-center gap-2 text-xs"
-                                                @click.stop
-                                            >
-                                                <input 
-                                                    type="checkbox" 
-                                                    :checked="sub.is_completed" 
-                                                    @change="toggleSubtask(sub)"
-                                                    class="rounded border-zinc-350 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-3.5 w-3.5"
-                                                />
+                                            <!-- Card Tags -->
+                                            <div v-if="t.tags && t.tags.length" class="flex flex-wrap gap-1 mb-2 pr-12">
                                                 <span 
-                                                    :class="['truncate select-none cursor-pointer flex-1 transition duration-150', sub.is_completed ? 'line-through text-zinc-400 dark:text-zinc-500' : 'text-zinc-700 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400']"
-                                                    @click="toggleSubtask(sub)"
+                                                    v-for="tag in t.tags" 
+                                                    :key="tag.id"
+                                                    :class="['inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold border', getTagColorConfig(tag.color).bg]"
                                                 >
-                                                    {{ sub.title }}
+                                                    {{ tag.name }}
+                                                </span>
+                                            </div>
+
+                                            <!-- Card Title -->
+                                            <h4 class="font-semibold text-zinc-900 dark:text-zinc-100 leading-snug mb-1 text-sm pr-12">
+                                                {{ t.title }}
+                                            </h4>
+                                            
+                                            <!-- Card Description -->
+                                            <p v-if="t.description" class="line-clamp-2 text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 leading-relaxed">
+                                                {{ t.description }}
+                                            </p>
+                                            
+                                            <!-- Subtask mini progress bar -->
+                                            <div v-if="t.subtasks && t.subtasks.length" class="mt-2.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-1 overflow-hidden">
+                                                <div 
+                                                    class="bg-indigo-600 dark:bg-indigo-500 h-1 rounded-full transition-all duration-300"
+                                                    :style="{ width: `${(getCompletedSubtasksCount(t) / t.subtasks.length) * 100}%` }"
+                                                />
+                                            </div>
+
+                                            <!-- Subtasks List on Card -->
+                                            <div v-if="t.subtasks && t.subtasks.length" class="mt-3.5 space-y-1.5 border-t border-zinc-150 dark:border-zinc-800/60 pt-2.5">
+                                                <div 
+                                                    v-for="sub in t.subtasks" 
+                                                    :key="sub.id" 
+                                                    class="flex items-center gap-2 text-xs"
+                                                    @click.stop
+                                                >
+                                                    <input 
+                                                        type="checkbox" 
+                                                        :checked="sub.is_completed" 
+                                                        @change="toggleSubtask(sub)"
+                                                        class="rounded border-zinc-350 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-3.5 w-3.5"
+                                                    />
+                                                    <span 
+                                                        :class="['truncate select-none cursor-pointer flex-1 transition duration-150', sub.is_completed ? 'line-through text-zinc-400 dark:text-zinc-500' : 'text-zinc-700 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400']"
+                                                        @click="toggleSubtask(sub)"
+                                                    >
+                                                        {{ sub.title }}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Card Footer Details -->
+                                            <div class="mt-4 flex flex-wrap gap-2 items-center">
+                                                
+                                                <!-- Priority Badge -->
+                                                <span :class="['inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold border tracking-wider uppercase', getPriorityConfig(t.priority).bg]">
+                                                    <span :class="['size-1.5 rounded-full', getPriorityConfig(t.priority).dot]" />
+                                                    {{ getPriorityConfig(t.priority).label }}
+                                                </span>
+
+                                                <!-- Checklist Progress Badge -->
+                                                <span v-if="t.subtasks && t.subtasks.length" class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border bg-indigo-50/70 text-indigo-700 border-indigo-200/50 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/30 tracking-wide">
+                                                    <CheckSquare class="size-3" />
+                                                    <span>{{ getCompletedSubtasksCount(t) }}/{{ t.subtasks.length }}</span>
+                                                </span>
+                                                
+                                                <!-- Due Date Badge -->
+                                                <span v-if="t.due_date" :class="['inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border tracking-wide', getFriendlyDueDate(t.due_date).class]">
+                                                    <Clock class="size-3" />
+                                                    <span>{{ getFriendlyDueDate(t.due_date).text }}</span>
                                                 </span>
                                             </div>
                                         </div>
-                                        
-                                        <!-- Card Footer Details -->
-                                        <div class="mt-4 flex flex-wrap gap-2 items-center">
-                                            
-                                            <!-- Priority Badge -->
-                                            <span :class="['inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold border tracking-wider uppercase', getPriorityConfig(t.priority).bg]">
-                                                <span :class="['size-1.5 rounded-full', getPriorityConfig(t.priority).dot]" />
-                                                {{ getPriorityConfig(t.priority).label }}
-                                            </span>
+                                    </template>
+                                </draggable>
 
-                                            <!-- Checklist Progress Badge -->
-                                            <span v-if="t.subtasks && t.subtasks.length" class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border bg-indigo-50/70 text-indigo-700 border-indigo-200/50 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/30 tracking-wide">
-                                                <CheckSquare class="size-3" />
-                                                <span>{{ getCompletedSubtasksCount(t) }}/{{ t.subtasks.length }}</span>
-                                            </span>
-                                            
-                                            <!-- Due Date Badge -->
-                                            <span v-if="t.due_date" :class="['inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border tracking-wide', getFriendlyDueDate(t.due_date).class]">
-                                                <Clock class="size-3" />
-                                                <span>{{ getFriendlyDueDate(t.due_date).text }}</span>
-                                            </span>
-                                        </div>
-                                    </div>
-                                </template>
-                            </draggable>
+                                <!-- Empty Column Placeholder -->
+                                <div v-if="!col.tasks.length" class="mb-4 rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-800/80 bg-white/40 dark:bg-zinc-900/20 px-4 py-8 text-center text-xs text-zinc-400 dark:text-zinc-500">
+                                    Solte cartões aqui ou adicione tarefas.
+                                </div>
 
-                            <!-- Empty Column Placeholder -->
-                            <div v-if="!col.tasks.length" class="mb-4 rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-800/80 bg-white/40 dark:bg-zinc-900/20 px-4 py-8 text-center text-xs text-zinc-400 dark:text-zinc-500">
-                                Solte cartões aqui ou adicione tarefas.
+                                <!-- Add Card Button inside column -->
+                                <Button @click="openTaskModal(col.id)" variant="ghost" class="w-full justify-center text-zinc-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-zinc-200/40 dark:hover:bg-zinc-800/40 py-2 border border-dashed border-zinc-300/80 dark:border-zinc-800 rounded-lg text-xs font-semibold gap-1.5 transition-all">
+                                    <Plus class="size-3.5" />
+                                    Adicionar Cartão
+                                </Button>
                             </div>
+                        </template>
+                    </draggable>
 
-                            <!-- Add Card Button inside column -->
-                            <Button @click="openTaskModal(col.id)" variant="ghost" class="w-full justify-center text-zinc-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-zinc-200/40 dark:hover:bg-zinc-800/40 py-2 border border-dashed border-zinc-300/80 dark:border-zinc-800 rounded-lg text-xs font-semibold gap-1.5 transition-all">
-                                <Plus class="size-3.5" />
-                                Adicionar Cartão
-                            </Button>
-                        </div>
-                    </template>
-                </draggable>
+                    <!-- Add Column Placeholder Card at the end of columns list -->
+                    <div @click="isColumnModalOpen = true" class="w-[320px] shrink-0 min-h-[150px] flex flex-col items-center justify-center border-2 border-dashed border-zinc-300 dark:border-zinc-800 hover:border-indigo-500 dark:hover:border-indigo-400 rounded-xl cursor-pointer bg-zinc-50/20 dark:bg-zinc-950/5 hover:bg-zinc-50/60 dark:hover:bg-zinc-950/20 transition-all duration-300 group">
+                        <Plus class="size-6 text-zinc-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
+                        <span class="mt-2 text-sm font-semibold text-zinc-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                            Criar Nova Coluna
+                        </span>
+                    </div>
 
-                <!-- Add Column Placeholder Card at the end of columns list -->
-                <div @click="isColumnModalOpen = true" class="w-[320px] shrink-0 min-h-[150px] flex flex-col items-center justify-center border-2 border-dashed border-zinc-300 dark:border-zinc-800 hover:border-indigo-500 dark:hover:border-indigo-400 rounded-xl cursor-pointer bg-zinc-50/20 dark:bg-zinc-950/5 hover:bg-zinc-50/60 dark:hover:bg-zinc-950/20 transition-all duration-300 group">
-                    <Plus class="size-6 text-zinc-400 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
-                    <span class="mt-2 text-sm font-semibold text-zinc-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
-                        Criar Nova Coluna
-                    </span>
                 </div>
 
-            </div>
+                <!-- Calendar View -->
+                <div v-else-if="currentView === 'calendar'" class="flex flex-col gap-4 bg-white/60 dark:bg-zinc-900/20 border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-6 shadow-xs backdrop-blur-md">
+                    <!-- Calendar Header (Month navigation) -->
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-zinc-200 dark:border-zinc-800">
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-xl font-bold text-zinc-900 dark:text-zinc-50">
+                                {{ monthNames[currentMonth] }} {{ currentYear }}
+                            </h3>
+                        </div>
+                        <div class="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-zinc-200/50 dark:border-zinc-700/50 self-start sm:self-auto">
+                            <Button @click="prevMonth" variant="ghost" size="icon" class="h-8 w-8 text-zinc-600 dark:text-zinc-350 hover:bg-white dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-50 rounded-md cursor-pointer">
+                                <ChevronLeft class="size-4" />
+                            </Button>
+                            <Button @click="goToToday" variant="ghost" class="h-8 px-3 text-xs font-semibold text-zinc-650 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-50 rounded-md cursor-pointer">
+                                Hoje
+                            </Button>
+                            <Button @click="nextMonth" variant="ghost" size="icon" class="h-8 w-8 text-zinc-600 dark:text-zinc-350 hover:bg-white dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-50 rounded-md cursor-pointer">
+                                <ChevronRight class="size-4" />
+                            </Button>
+                        </div>
+                    </div>
+
+                    <!-- Weekdays Header Grid -->
+                    <div class="grid grid-cols-7 gap-2 text-center text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 py-2">
+                        <div>Dom</div>
+                        <div>Seg</div>
+                        <div>Ter</div>
+                        <div>Qua</div>
+                        <div>Qui</div>
+                        <div>Sex</div>
+                        <div>Sáb</div>
+                    </div>
+
+                    <!-- Days Grid -->
+                    <div class="grid grid-cols-7 gap-2 min-h-[500px]">
+                        <div
+                            v-for="day in calendarDays"
+                            :key="day.dateStr"
+                            :class="[
+                                'flex flex-col min-h-[100px] p-2.5 rounded-xl border transition-all duration-200 hover:border-zinc-300 dark:hover:border-zinc-700',
+                                day.isCurrentMonth
+                                    ? 'bg-zinc-50/50 dark:bg-zinc-900/10 border-zinc-200/80 dark:border-zinc-800/80'
+                                    : 'bg-zinc-100/20 dark:bg-zinc-950/5 border-zinc-150/50 dark:border-zinc-900/30 opacity-60',
+                                isDateToday(day.dateStr)
+                                    ? 'ring-2 ring-indigo-500/50 bg-indigo-50/10 dark:bg-indigo-950/5 border-indigo-200 dark:border-indigo-900/50'
+                                    : ''
+                            ]"
+                        >
+                            <!-- Day Number / Date Header -->
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span
+                                    :class="[
+                                        'text-xs font-bold flex h-5 w-5 items-center justify-center rounded-full',
+                                        isDateToday(day.dateStr)
+                                            ? 'bg-indigo-600 text-white shadow-2xs font-semibold'
+                                            : day.isCurrentMonth
+                                                ? 'text-zinc-700 dark:text-zinc-300'
+                                                : 'text-zinc-400 dark:text-zinc-500'
+                                    ]"
+                                >
+                                    {{ day.dayNum }}
+                                </span>
+                                <!-- Small badge for number of tasks if any -->
+                                <span v-if="day.tasks.length" class="text-[9px] font-bold text-zinc-500 dark:text-zinc-450 px-1.5 py-0.5 rounded bg-zinc-200/60 dark:bg-zinc-850/60">
+                                    {{ day.tasks.length }}
+                                </span>
+                            </div>
+
+                            <!-- Tasks list in this day (Scrollable if too many) -->
+                            <div class="flex-1 space-y-1.5 overflow-y-auto max-h-[140px] scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800 pr-0.5">
+                                <div
+                                    v-for="task in day.tasks"
+                                    :key="task.id"
+                                    @click="openEditTaskModal(task)"
+                                    :class="[
+                                        'group relative cursor-pointer rounded-lg border p-1.5 text-left transition-all duration-150 hover:shadow-2xs select-none border-zinc-200 hover:border-indigo-500/50 dark:border-zinc-800/60 dark:hover:border-indigo-400/50',
+                                        getPriorityConfig(task.priority).bg
+                                    ]"
+                                >
+                                    <!-- Task title inside day cell -->
+                                    <div class="font-semibold text-zinc-900 dark:text-zinc-100 text-[10px] leading-tight truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                        {{ task.title }}
+                                    </div>
+                                    <!-- Subtask progress if exists -->
+                                    <div v-if="task.subtasks && task.subtasks.length" class="flex items-center gap-0.5 mt-0.5 text-[8px] text-zinc-500 dark:text-zinc-455 font-medium">
+                                        <CheckSquare class="size-2 text-indigo-500" />
+                                        <span>{{ getCompletedSubtasksCount(task) }}/{{ task.subtasks.length }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
 
             <!-- Dashboard Entirely Empty State -->
             <div v-else class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-200 bg-white/50 p-12 text-center dark:border-zinc-800 dark:bg-zinc-900/10 backdrop-blur-md">
