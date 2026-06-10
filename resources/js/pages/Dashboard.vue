@@ -11,7 +11,8 @@ import {
     AlertTriangle,
     Layers,
     ListTodo,
-    GripVertical
+    GripVertical,
+    Search
 } from '@lucide/vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
@@ -250,14 +251,43 @@ const formatDueDate = (dueDate: string | null) => {
 
 const isOverdue = (dueDate: string | null) => {
     if (!dueDate) {
-return false;
-}
+        return false;
+    }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     return new Date(`${dueDate}T00:00:00`) < today;
 };
+
+const searchQuery = ref('');
+const selectedPriority = ref<'all' | 'low' | 'medium' | 'high'>('all');
+
+const matchesFilter = (task: Task) => {
+    if (searchQuery.value) {
+        const query = searchQuery.value.toLowerCase();
+        const matchesTitle = task.title.toLowerCase().includes(query);
+        const matchesDesc = task.description ? task.description.toLowerCase().includes(query) : false;
+
+        if (!matchesTitle && !matchesDesc) {
+            return false;
+        }
+    }
+
+    if (selectedPriority.value !== 'all') {
+        if (task.priority !== selectedPriority.value) {
+            return false;
+        }
+    }
+
+    return true;
+};
+
+const filteredTasksCount = computed(() => {
+    return localColumns.value.reduce((count, column) => {
+        return count + column.tasks.filter(matchesFilter).length;
+    }, 0);
+});
 </script>
 
 <template>
@@ -306,7 +336,9 @@ return false;
                 </div>
                 <div>
                     <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Total de Tarefas</p>
-                    <p class="text-2xl font-bold text-zinc-900 dark:text-zinc-50 mt-0.5">{{ totalTasks }}</p>
+                    <p class="text-2xl font-bold text-zinc-900 dark:text-zinc-50 mt-0.5">
+                        <span v-if="searchQuery || selectedPriority !== 'all'">{{ filteredTasksCount }} / </span>{{ totalTasks }}
+                    </p>
                 </div>
             </div>
             
@@ -317,6 +349,46 @@ return false;
                 <div>
                     <p class="text-xs font-medium text-indigo-100 uppercase tracking-wider">Ação Rápida</p>
                     <p class="text-lg font-bold mt-0.5 leading-snug">Arraste e solte para ordenar</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search and Filters Bar -->
+        <div v-if="hasColumns" class="flex flex-col gap-4 rounded-xl border border-zinc-200/80 bg-white/60 p-4 shadow-2xs backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/40 md:flex-row md:items-center md:justify-between">
+            <div class="relative flex-1 max-w-md">
+                <span class="absolute inset-y-0 left-3 flex items-center text-zinc-400 dark:text-zinc-500">
+                    <Search class="size-4" />
+                </span>
+                <Input
+                    v-model="searchQuery"
+                    placeholder="Buscar tarefas pelo título ou descrição..."
+                    class="pl-9 h-9 border-zinc-200 focus:border-indigo-500 focus:ring-indigo-500 dark:border-zinc-800 dark:bg-zinc-950/50"
+                />
+                <button
+                    v-if="searchQuery"
+                    @click="searchQuery = ''"
+                    class="absolute inset-y-0 right-3 flex items-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                >
+                    <X class="size-4" />
+                </button>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-3">
+                <span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Filtrar por Prioridade:</span>
+                <div class="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-zinc-200/50 dark:border-zinc-700/50">
+                    <button
+                        v-for="p in ['all', 'low', 'medium', 'high'] as const"
+                        :key="p"
+                        @click="selectedPriority = p"
+                        :class="[
+                            'px-3 py-1 text-xs font-medium rounded-md transition duration-150',
+                            selectedPriority === p
+                                ? 'bg-white text-zinc-900 shadow-2xs dark:bg-zinc-700 dark:text-zinc-100'
+                                : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+                        ]"
+                    >
+                        {{ p === 'all' ? 'Todas' : p === 'low' ? 'Baixa' : p === 'medium' ? 'Média' : 'Alta' }}
+                    </button>
                 </div>
             </div>
         </div>
@@ -346,7 +418,7 @@ return false;
                                     </span>
                                     <h3 class="font-bold text-zinc-800 dark:text-zinc-200 truncate text-sm tracking-tight">{{ col.name }}</h3>
                                     <Badge variant="secondary" class="bg-zinc-200/60 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 font-semibold px-2 py-0.5 text-[10px] rounded-full shrink-0">
-                                        {{ col.tasks.length }}
+                                        <span v-if="searchQuery || selectedPriority !== 'all'">{{ col.tasks.filter(matchesFilter).length }} / </span>{{ col.tasks.length }}
                                     </Badge>
                                 </div>
                                 
@@ -366,7 +438,7 @@ return false;
                                 @change="handleDragChange"
                             >
                                 <template #item="{ element: t }">
-                                    <div class="group relative cursor-grab rounded-xl border border-zinc-200 bg-white p-4 shadow-2xs hover:shadow-md hover:border-indigo-500/50 dark:border-zinc-800/60 dark:bg-zinc-900/90 dark:hover:border-indigo-400/50 transition-all duration-200 active:cursor-grabbing">
+                                    <div v-show="matchesFilter(t)" class="group relative cursor-grab rounded-xl border border-zinc-200 bg-white p-4 shadow-2xs hover:shadow-md hover:border-indigo-500/50 dark:border-zinc-800/60 dark:bg-zinc-900/90 dark:hover:border-indigo-400/50 transition-all duration-200 active:cursor-grabbing">
                                         
                                         <!-- Hover Actions Menu -->
                                         <div class="absolute right-2.5 top-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/90 dark:bg-zinc-900/90 p-1 rounded-md shadow-2xs border border-zinc-200 dark:border-zinc-800 backdrop-blur-xs">
