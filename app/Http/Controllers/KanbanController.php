@@ -161,4 +161,31 @@ class KanbanController extends Controller
 
         return back();
     }
+
+    /**
+     * Atualiza as posições de múltiplas colunas simultaneamente após o drag-and-drop.
+     */
+    public function reorderColumns(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'columns' => 'required|array',
+            'columns.*.id' => [
+                'required',
+                Rule::exists('columns', 'id')->where('user_id', $request->user()->id),
+            ],
+            'columns.*.position' => 'required|integer',
+        ]);
+
+        \DB::transaction(function () use ($validated, $request) {
+            foreach ($validated['columns'] as $columnData) {
+                Column::where('id', $columnData['id'])
+                    ->where('user_id', $request->user()->id)
+                    ->update([
+                        'position' => $columnData['position'],
+                    ]);
+            }
+        });
+
+        return back();
+    }
 }

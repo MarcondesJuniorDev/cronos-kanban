@@ -11,6 +11,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Rotas de gerenciamento de Colunas
     Route::post('/columns', [KanbanController::class, 'storeColumn'])->name('columns.store');
     Route::delete('/columns/{column}', [KanbanController::class, 'destroyColumn'])->name('columns.destroy');
+    Route::put('/columns/reorder', [KanbanController::class, 'reorderColumns'])->name('columns.reorder');
 
     // Rotas de gerenciamento de Tarefas
     Route::post('/tasks', [KanbanController::class, 'storeTask'])->name('tasks.store');

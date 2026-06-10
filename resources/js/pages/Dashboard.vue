@@ -10,7 +10,8 @@ import {
     CheckSquare,
     AlertTriangle,
     Layers,
-    ListTodo
+    ListTodo,
+    GripVertical
 } from '@lucide/vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
@@ -62,17 +63,19 @@ const props = defineProps<{
     columns: Column[];
 }>();
 
-const cloneColumns = (columns: Column[]) => JSON.parse(JSON.stringify(columns)) as Column[];
+const cloneAndSortColumns = (columns: Column[]) => {
+    const cloned = JSON.parse(JSON.stringify(columns)) as Column[];
 
-const localColumns = ref<Column[]>(cloneColumns(props.columns));
+    return cloned.sort((left, right) => left.position - right.position);
+};
 
-const orderedColumns = computed(() => [...localColumns.value].sort((left, right) => left.position - right.position));
+const localColumns = ref<Column[]>(cloneAndSortColumns(props.columns));
 
-const totalTasks = computed(() => orderedColumns.value.reduce((count, column) => count + column.tasks.length, 0));
-const hasColumns = computed(() => orderedColumns.value.length > 0);
+const totalTasks = computed(() => localColumns.value.reduce((count, column) => count + column.tasks.length, 0));
+const hasColumns = computed(() => localColumns.value.length > 0);
 
 watch(() => props.columns, (newColumns) => {
-    localColumns.value = cloneColumns(newColumns);
+    localColumns.value = cloneAndSortColumns(newColumns);
 }, { deep: true });
 
 const handleDragChange = async () => {
@@ -90,6 +93,26 @@ const handleDragChange = async () => {
         onSuccess: () => {
             toast.success('Quadro atualizado com sucesso!', {
                 description: 'A nova ordem dos cartões foi salva.',
+                duration: 2000
+            });
+        }
+    });
+};
+
+const handleColumnDragChange = async () => {
+    await nextTick();
+
+    const payload = localColumns.value.map((column, index) => ({
+        id: column.id,
+        position: index,
+    }));
+
+    router.put(columnsRoutes.reorder.url(), { columns: payload }, {
+        preserveState: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            toast.success('Colunas reordenadas com sucesso!', {
+                description: 'A nova disposição das colunas foi salva.',
                 duration: 2000
             });
         }
@@ -273,7 +296,7 @@ return false;
                 </div>
                 <div>
                     <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Colunas</p>
-                    <p class="text-2xl font-bold text-zinc-900 dark:text-zinc-50 mt-0.5">{{ orderedColumns.length }}</p>
+                    <p class="text-2xl font-bold text-zinc-900 dark:text-zinc-50 mt-0.5">{{ localColumns.length }}</p>
                 </div>
             </div>
             
@@ -302,91 +325,106 @@ return false;
         <div class="flex-1 min-h-0">
             <div v-if="hasColumns" class="flex gap-6 overflow-x-auto pb-6 pt-2 items-start select-none scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800">
                 
-                <!-- Column Loop -->
-                <div v-for="col in orderedColumns" :key="col.id" class="w-[320px] shrink-0 flex flex-col rounded-xl border border-zinc-200/80 bg-zinc-100/70 p-4 transition-all duration-300 shadow-xs hover:shadow-md dark:border-zinc-800/80 dark:bg-zinc-900/30 dark:backdrop-blur-md max-h-[75vh]">
-                    
-                    <!-- Column Header -->
-                    <div class="mb-4 flex items-center justify-between">
-                        <div class="flex items-center gap-2 min-w-0">
-                            <h3 class="font-bold text-zinc-800 dark:text-zinc-200 truncate text-sm tracking-tight">{{ col.name }}</h3>
-                            <Badge variant="secondary" class="bg-zinc-200/60 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 font-semibold px-2 py-0.5 text-[10px] rounded-full shrink-0">
-                                {{ col.tasks.length }}
-                            </Badge>
-                        </div>
-                        
-                        <Button @click="openDeleteConfirm('column', col.id, col.name)" variant="ghost" size="icon" class="h-6 w-6 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-md transition duration-150 shrink-0">
-                            <X class="size-4" />
-                        </Button>
-                    </div>
-
-                    <!-- Tasks Draggable Area -->
-                    <draggable 
-                        v-model="col.tasks" 
-                        group="tasks" 
-                        item-key="id" 
-                        class="mb-4 flex-1 space-y-3 drop-zone overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800" 
-                        ghost-class="kanban-ghost" 
-                        drag-class="kanban-drag"
-                        @change="handleDragChange"
-                    >
-                        <template #item="{ element: t }">
-                            <div class="group relative cursor-grab rounded-xl border border-zinc-200 bg-white p-4 shadow-2xs hover:shadow-md hover:border-indigo-500/50 dark:border-zinc-800/60 dark:bg-zinc-900/90 dark:hover:border-indigo-400/50 transition-all duration-200 active:cursor-grabbing">
-                                
-                                <!-- Hover Actions Menu -->
-                                <div class="absolute right-2.5 top-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/90 dark:bg-zinc-900/90 p-1 rounded-md shadow-2xs border border-zinc-200 dark:border-zinc-800 backdrop-blur-xs">
-                                    <button @click.stop="openEditTaskModal(t)" class="p-1 text-zinc-400 hover:text-indigo-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition" title="Editar">
-                                        <Pencil class="size-3.5" />
-                                    </button>
-                                    <button @click.stop="openDeleteConfirm('task', t.id, t.title)" class="p-1 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md transition" title="Excluir">
-                                        <Trash2 class="size-3.5" />
-                                    </button>
-                                </div>
-
-                                <!-- Card Title -->
-                                <h4 class="font-semibold text-zinc-900 dark:text-zinc-100 leading-snug mb-1 text-sm pr-12">
-                                    {{ t.title }}
-                                </h4>
-                                
-                                <!-- Card Description -->
-                                <p v-if="t.description" class="line-clamp-2 text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 leading-relaxed">
-                                    {{ t.description }}
-                                </p>
-                                
-                                <!-- Card Footer Details -->
-                                <div class="mt-4 flex flex-wrap gap-2 items-center">
-                                    
-                                    <!-- Priority Badge -->
-                                    <span :class="['inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold border tracking-wider uppercase', getPriorityConfig(t.priority).bg]">
-                                        <span :class="['size-1.5 rounded-full', getPriorityConfig(t.priority).dot]" />
-                                        {{ getPriorityConfig(t.priority).label }}
+                <draggable 
+                    v-model="localColumns" 
+                    group="columns" 
+                    item-key="id" 
+                    handle=".column-drag-handle"
+                    ghost-class="column-ghost" 
+                    drag-class="column-drag"
+                    class="flex gap-6 items-start"
+                    @change="handleColumnDragChange"
+                >
+                    <template #item="{ element: col }">
+                        <div class="w-[320px] shrink-0 flex flex-col rounded-xl border border-zinc-200/80 bg-zinc-100/70 p-4 transition-all duration-300 shadow-xs hover:shadow-md dark:border-zinc-800/80 dark:bg-zinc-900/30 dark:backdrop-blur-md max-h-[75vh]">
+                            
+                            <!-- Column Header -->
+                            <div class="mb-4 flex items-center justify-between">
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                    <span class="column-drag-handle p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing shrink-0 transition duration-150">
+                                        <GripVertical class="size-4" />
                                     </span>
-
-                                    <!-- Due Date Badge -->
-                                    <span v-if="t.due_date" :class="[
-                                        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border tracking-wide',
-                                        isOverdue(t.due_date) 
-                                            ? 'bg-rose-50 text-rose-700 border-rose-200/50 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30' 
-                                            : 'bg-zinc-100 text-zinc-600 border-zinc-200/50 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700/50'
-                                    ]">
-                                        <Clock class="size-3" />
-                                        <span>Prazo: {{ formatDueDate(t.due_date) }}</span>
-                                    </span>
+                                    <h3 class="font-bold text-zinc-800 dark:text-zinc-200 truncate text-sm tracking-tight">{{ col.name }}</h3>
+                                    <Badge variant="secondary" class="bg-zinc-200/60 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 font-semibold px-2 py-0.5 text-[10px] rounded-full shrink-0">
+                                        {{ col.tasks.length }}
+                                    </Badge>
                                 </div>
+                                
+                                <Button @click="openDeleteConfirm('column', col.id, col.name)" variant="ghost" size="icon" class="h-6 w-6 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-md transition duration-150 shrink-0">
+                                    <X class="size-4" />
+                                </Button>
                             </div>
-                        </template>
-                    </draggable>
 
-                    <!-- Empty Column Placeholder -->
-                    <div v-if="!col.tasks.length" class="mb-4 rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-800/80 bg-white/40 dark:bg-zinc-900/20 px-4 py-8 text-center text-xs text-zinc-400 dark:text-zinc-500">
-                        Solte cartões aqui ou adicione tarefas.
-                    </div>
+                            <!-- Tasks Draggable Area -->
+                            <draggable 
+                                v-model="col.tasks" 
+                                group="tasks" 
+                                item-key="id" 
+                                class="mb-4 flex-1 space-y-3 drop-zone overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800" 
+                                ghost-class="kanban-ghost" 
+                                drag-class="kanban-drag"
+                                @change="handleDragChange"
+                            >
+                                <template #item="{ element: t }">
+                                    <div class="group relative cursor-grab rounded-xl border border-zinc-200 bg-white p-4 shadow-2xs hover:shadow-md hover:border-indigo-500/50 dark:border-zinc-800/60 dark:bg-zinc-900/90 dark:hover:border-indigo-400/50 transition-all duration-200 active:cursor-grabbing">
+                                        
+                                        <!-- Hover Actions Menu -->
+                                        <div class="absolute right-2.5 top-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/90 dark:bg-zinc-900/90 p-1 rounded-md shadow-2xs border border-zinc-200 dark:border-zinc-800 backdrop-blur-xs">
+                                            <button @click.stop="openEditTaskModal(t)" class="p-1 text-zinc-400 hover:text-indigo-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition" title="Editar">
+                                                <Pencil class="size-3.5" />
+                                            </button>
+                                            <button @click.stop="openDeleteConfirm('task', t.id, t.title)" class="p-1 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md transition" title="Excluir">
+                                                <Trash2 class="size-3.5" />
+                                            </button>
+                                        </div>
 
-                    <!-- Add Card Button inside column -->
-                    <Button @click="openTaskModal(col.id)" variant="ghost" class="w-full justify-center text-zinc-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-zinc-200/40 dark:hover:bg-zinc-800/40 py-2 border border-dashed border-zinc-300/80 dark:border-zinc-800 rounded-lg text-xs font-semibold gap-1.5 transition-all">
-                        <Plus class="size-3.5" />
-                        Adicionar Cartão
-                    </Button>
-                </div>
+                                        <!-- Card Title -->
+                                        <h4 class="font-semibold text-zinc-900 dark:text-zinc-100 leading-snug mb-1 text-sm pr-12">
+                                            {{ t.title }}
+                                        </h4>
+                                        
+                                        <!-- Card Description -->
+                                        <p v-if="t.description" class="line-clamp-2 text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 leading-relaxed">
+                                            {{ t.description }}
+                                        </p>
+                                        
+                                        <!-- Card Footer Details -->
+                                        <div class="mt-4 flex flex-wrap gap-2 items-center">
+                                            
+                                            <!-- Priority Badge -->
+                                            <span :class="['inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold border tracking-wider uppercase', getPriorityConfig(t.priority).bg]">
+                                                <span :class="['size-1.5 rounded-full', getPriorityConfig(t.priority).dot]" />
+                                                {{ getPriorityConfig(t.priority).label }}
+                                            </span>
+
+                                            <!-- Due Date Badge -->
+                                            <span v-if="t.due_date" :class="[
+                                                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border tracking-wide',
+                                                isOverdue(t.due_date) 
+                                                    ? 'bg-rose-50 text-rose-700 border-rose-200/50 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30' 
+                                                    : 'bg-zinc-100 text-zinc-600 border-zinc-200/50 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700/50'
+                                            ]">
+                                                <Clock class="size-3" />
+                                                <span>Prazo: {{ formatDueDate(t.due_date) }}</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </draggable>
+
+                            <!-- Empty Column Placeholder -->
+                            <div v-if="!col.tasks.length" class="mb-4 rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-800/80 bg-white/40 dark:bg-zinc-900/20 px-4 py-8 text-center text-xs text-zinc-400 dark:text-zinc-500">
+                                Solte cartões aqui ou adicione tarefas.
+                            </div>
+
+                            <!-- Add Card Button inside column -->
+                            <Button @click="openTaskModal(col.id)" variant="ghost" class="w-full justify-center text-zinc-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 hover:bg-zinc-200/40 dark:hover:bg-zinc-800/40 py-2 border border-dashed border-zinc-300/80 dark:border-zinc-800 rounded-lg text-xs font-semibold gap-1.5 transition-all">
+                                <Plus class="size-3.5" />
+                                Adicionar Cartão
+                            </Button>
+                        </div>
+                    </template>
+                </draggable>
 
                 <!-- Add Column Placeholder Card at the end of columns list -->
                 <div @click="isColumnModalOpen = true" class="w-[320px] shrink-0 min-h-[150px] flex flex-col items-center justify-center border-2 border-dashed border-zinc-300 dark:border-zinc-800 hover:border-indigo-500 dark:hover:border-indigo-400 rounded-xl cursor-pointer bg-zinc-50/20 dark:bg-zinc-950/5 hover:bg-zinc-50/60 dark:hover:bg-zinc-950/20 transition-all duration-300 group">
@@ -551,6 +589,14 @@ return false;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
     opacity: 0.9 !important;
     transform: scale(1.02);
+}
+.column-ghost {
+    opacity: 0.2 !important;
+    transform: scale(0.98);
+}
+.column-drag {
+    opacity: 0.9 !important;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05) !important;
 }
 </style>
 
