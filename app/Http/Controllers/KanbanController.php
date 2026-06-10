@@ -2,11 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\ImportKanbanBoard;
+use App\Http\Requests\ImportBoardRequest;
+use App\Http\Requests\ReorderColumnsRequest;
+use App\Http\Requests\ReorderTasksRequest;
+use App\Http\Requests\StoreColumnRequest;
+use App\Http\Requests\StoreTaskRequest;
+use App\Http\Requests\UpdateTaskRequest;
 use App\Models\Column;
 use App\Models\Task;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -55,11 +63,9 @@ class KanbanController extends Controller
         ]);
     }
 
-    public function storeColumn(Request $request): RedirectResponse
+    public function storeColumn(StoreColumnRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:55',
-        ]);
+        $validated = $request->validated();
 
         // Pega a maior posição atual e soma 1. Evita posições duplicadas caso alguma coluna tenha sido apagada.
         $maxPosition = $request->user()->columns()->max('position');
@@ -76,12 +82,9 @@ class KanbanController extends Controller
     /**
      * Exclui uma coluna e todas as suas tarefas vinculadas (Cascade).
      */
-    public function destroyColumn(Column $column, Request $request): RedirectResponse
+    public function destroyColumn(Column $column): RedirectResponse
     {
-        // Garante que o usuário só pode deletar colunas que pertencem a ele
-        if ($column->user_id !== $request->user()->id) {
-            abort(403);
-        }
+        Gate::authorize('delete', $column);
 
         $column->delete();
 
@@ -91,20 +94,9 @@ class KanbanController extends Controller
     /**
      * Cria um novo cartão de tarefa dentro de uma coluna específica.
      */
-    public function storeTask(Request $request): RedirectResponse
+    public function storeTask(StoreTaskRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'column_id' => 'required|exists:columns,id',
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'priority' => 'required|in:low,medium,high',
-            'due_date' => 'nullable|date',
-            'tag_ids' => 'nullable|array',
-            'tag_ids.*' => [
-                'required',
-                Rule::exists('tags', 'id')->where('user_id', $request->user()->id),
-            ],
-        ]);
+        $validated = $request->validated();
 
         // Garante que a coluna informada realmente pertence ao usuário logado
         /** @var Column $column */
@@ -135,23 +127,11 @@ class KanbanController extends Controller
     /**
      * Atualiza os dados de texto e informações de uma tarefa existente.
      */
-    public function updateTask(Request $request, Task $task): RedirectResponse
+    public function updateTask(UpdateTaskRequest $request, Task $task): RedirectResponse
     {
-        if ($task->user_id !== $request->user()->id) {
-            abort(403);
-        }
+        Gate::authorize('update', $task);
 
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'priority' => 'required|in:low,medium,high',
-            'due_date' => 'nullable|date',
-            'tag_ids' => 'nullable|array',
-            'tag_ids.*' => [
-                'required',
-                Rule::exists('tags', 'id')->where('user_id', $request->user()->id),
-            ],
-        ]);
+        $validated = $request->validated();
 
         $task->update([
             'title' => $validated['title'],
@@ -168,11 +148,9 @@ class KanbanController extends Controller
     /**
      * Exclui um cartão de tarefa.
      */
-    public function destroyTask(Task $task, Request $request): RedirectResponse
+    public function destroyTask(Task $task): RedirectResponse
     {
-        if ($task->user_id !== $request->user()->id) {
-            abort(403);
-        }
+        Gate::authorize('delete', $task);
 
         $task->delete();
 
@@ -183,20 +161,12 @@ class KanbanController extends Controller
      * Atualiza as posições e colunas de múltiplos cards simultaneamente após o drag-and-drop.
      * Esta rota será chamada assincronamente pelo front-end no Vue.
      */
-    public function reorderTasks(Request $request): RedirectResponse
+    public function reorderTasks(ReorderTasksRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'tasks' => 'required|array',
-            'tasks.*.id' => 'required|exists:tasks,id',
-            'tasks.*.column_id' => [
-                'required',
-                Rule::exists('columns', 'id')->where('user_id', $request->user()->id), // Segurança: A coluna de destino DEVE ser do usuário
-            ],
-            'tasks.*.position' => 'required|integer',
-        ]);
+        $validated = $request->validated();
 
         // Executa as atualizações dentro de uma transação de banco de dados por segurança e performance
-        \DB::transaction(function () use ($validated, $request) {
+        DB::transaction(function () use ($validated, $request) {
             foreach ($validated['tasks'] as $taskData) {
                 // Atualiza apenas se a tarefa pertencer ao usuário autenticado
                 Task::where('id', $taskData['id'])
@@ -214,18 +184,11 @@ class KanbanController extends Controller
     /**
      * Atualiza as posições de múltiplas colunas simultaneamente após o drag-and-drop.
      */
-    public function reorderColumns(Request $request): RedirectResponse
+    public function reorderColumns(ReorderColumnsRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'columns' => 'required|array',
-            'columns.*.id' => [
-                'required',
-                Rule::exists('columns', 'id')->where('user_id', $request->user()->id),
-            ],
-            'columns.*.position' => 'required|integer',
-        ]);
+        $validated = $request->validated();
 
-        \DB::transaction(function () use ($validated, $request) {
+        DB::transaction(function () use ($validated, $request) {
             foreach ($validated['columns'] as $columnData) {
                 Column::where('id', $columnData['id'])
                     ->where('user_id', $request->user()->id)
@@ -241,11 +204,9 @@ class KanbanController extends Controller
     /**
      * Arquiva uma tarefa.
      */
-    public function archiveTask(Task $task, Request $request): RedirectResponse
+    public function archiveTask(Task $task): RedirectResponse
     {
-        if ($task->user_id !== $request->user()->id) {
-            abort(403);
-        }
+        Gate::authorize('archive', $task);
 
         $task->update(['is_archived' => true]);
 
@@ -255,11 +216,9 @@ class KanbanController extends Controller
     /**
      * Restaura uma tarefa arquivada.
      */
-    public function restoreTask(Task $task, Request $request): RedirectResponse
+    public function restoreTask(Task $task): RedirectResponse
     {
-        if ($task->user_id !== $request->user()->id) {
-            abort(403);
-        }
+        Gate::authorize('restore', $task);
 
         $task->update(['is_archived' => false]);
 
@@ -269,12 +228,8 @@ class KanbanController extends Controller
     /**
      * Importa o quadro inteiro a partir de um arquivo JSON.
      */
-    public function importBoard(Request $request): RedirectResponse
+    public function importBoard(ImportBoardRequest $request, ImportKanbanBoard $importer): RedirectResponse
     {
-        $request->validate([
-            'file' => 'required|file|mimes:json',
-        ]);
-
         $file = $request->file('file');
         if (! $file) {
             return back()->withErrors(['file' => 'Arquivo não encontrado.']);
@@ -296,71 +251,7 @@ class KanbanController extends Controller
             return back()->withErrors(['file' => 'Arquivo JSON inválido.']);
         }
 
-        \DB::transaction(function () use ($data, $request) {
-            $user = $request->user();
-
-            // Limpa dados existentes do usuário
-            $user->columns()->delete();
-            $user->tags()->delete();
-
-            // Recria as etiquetas primeiro, guardando mapa de IDs antigos para novos
-            $tagIdMap = [];
-            if (! empty($data['tags'])) {
-                foreach ($data['tags'] as $tagData) {
-                    $newTag = $user->tags()->create([
-                        'name' => $tagData['name'],
-                        'color' => $tagData['color'],
-                    ]);
-                    $tagIdMap[$tagData['id']] = $newTag->id;
-                }
-            }
-
-            // Recria as colunas e tarefas
-            if (! empty($data['columns'])) {
-                foreach ($data['columns'] as $colData) {
-                    $column = $user->columns()->create([
-                        'name' => $colData['name'],
-                        'position' => $colData['position'],
-                    ]);
-
-                    if (! empty($colData['tasks'])) {
-                        foreach ($colData['tasks'] as $taskData) {
-                            /** @var Task $task */
-                            $task = Task::create([
-                                'user_id' => $user->id,
-                                'column_id' => $column->id,
-                                'title' => $taskData['title'],
-                                'description' => $taskData['description'] ?? null,
-                                'priority' => $taskData['priority'],
-                                'due_date' => $taskData['due_date'] ?? null,
-                                'position' => $taskData['position'],
-                                'is_archived' => $taskData['is_archived'] ?? false,
-                            ]);
-
-                            if (! empty($taskData['subtasks'])) {
-                                foreach ($taskData['subtasks'] as $subData) {
-                                    $task->subtasks()->create([
-                                        'title' => $subData['title'],
-                                        'is_completed' => $subData['is_completed'] ?? false,
-                                        'position' => $subData['position'],
-                                    ]);
-                                }
-                            }
-
-                            if (! empty($taskData['tags'])) {
-                                $newTagIds = [];
-                                foreach ($taskData['tags'] as $oldTag) {
-                                    if (isset($tagIdMap[$oldTag['id']])) {
-                                        $newTagIds[] = $tagIdMap[$oldTag['id']];
-                                    }
-                                }
-                                $task->tags()->sync($newTagIds);
-                            }
-                        }
-                    }
-                }
-            }
-        });
+        $importer->execute($request->user(), $data);
 
         return back();
     }
