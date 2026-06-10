@@ -32,18 +32,26 @@ class KanbanController extends Controller
 
         $tags = $user->tags()->get();
 
-        // Busca as colunas do usuário logado trazendo junto suas respectivas tarefas ordenadas por posição
+        // Busca as colunas do usuário logado trazendo junto suas respectivas tarefas ordenadas por posição e não arquivadas
         $columns = $user->columns()
             ->orderBy('position')
             ->with(['tasks' => function ($query) {
-                $query->orderBy('position')->with(['subtasks', 'tags']);
+                $query->where('is_archived', false)->orderBy('position')->with(['subtasks', 'tags']);
             }])
+            ->get();
+
+        // Busca as tarefas arquivadas
+        $archivedTasks = $user->tasks()
+            ->where('is_archived', true)
+            ->orderByDesc('updated_at')
+            ->with(['subtasks', 'tags'])
             ->get();
 
         // Renderiza o componente Vue "Dashboard" injetando a coleção de colunas como prop
         return Inertia::render('Dashboard', [
             'columns' => $columns,
             'tags' => $tags,
+            'archivedTasks' => $archivedTasks,
         ]);
     }
 
@@ -226,6 +234,34 @@ class KanbanController extends Controller
                     ]);
             }
         });
+
+        return back();
+    }
+
+    /**
+     * Arquiva uma tarefa.
+     */
+    public function archiveTask(Task $task, Request $request): RedirectResponse
+    {
+        if ($task->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
+        $task->update(['is_archived' => true]);
+
+        return back();
+    }
+
+    /**
+     * Restaura uma tarefa arquivada.
+     */
+    public function restoreTask(Task $task, Request $request): RedirectResponse
+    {
+        if ($task->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
+        $task->update(['is_archived' => false]);
 
         return back();
     }

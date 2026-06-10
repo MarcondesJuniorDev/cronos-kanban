@@ -24,6 +24,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::put('/tasks/{task}', [KanbanController::class, 'updateTask'])->name('tasks.update');
     Route::delete('/tasks/{task}', [KanbanController::class, 'destroyTask'])->name('tasks.destroy');
+    Route::put('/tasks/{task}/archive', [KanbanController::class, 'archiveTask'])->name('tasks.archive');
+    Route::put('/tasks/{task}/restore', [KanbanController::class, 'restoreTask'])->name('tasks.restore');
 
     // Rotas de gerenciamento de Subtarefas (Checklist)
     Route::post('/subtasks', [SubtaskController::class, 'store'])->name('subtasks.store');

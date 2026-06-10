@@ -22,6 +22,7 @@ class Task extends Model
         'position',
         'priority',
         'due_date',
+        'is_archived',
     ];
 
     /**

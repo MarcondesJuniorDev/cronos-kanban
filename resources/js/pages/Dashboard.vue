@@ -12,7 +12,8 @@ import {
     Layers,
     ListTodo,
     GripVertical,
-    Search
+    Search,
+    Archive
 } from '@lucide/vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
@@ -80,6 +81,7 @@ interface Column {
 const props = defineProps<{
     columns: Column[];
     tags: Tag[];
+    archivedTasks: Task[];
 }>();
 
 const cloneAndSortColumns = (columns: Column[]) => {
@@ -265,16 +267,6 @@ const getPriorityConfig = (priority: string) => {
     }
 };
 
-const formatDueDate = (dueDate: string | null) => {
-    if (!dueDate) {
-        return '';
-    }
-
-    return new Intl.DateTimeFormat('pt-BR', {
-        day: '2-digit',
-        month: 'short',
-    }).format(new Date(`${dueDate}T00:00:00`));
-};
 
 const isOverdue = (dueDate: string | null) => {
     if (!dueDate) {
@@ -426,6 +418,64 @@ const toggleFormTag = (tagId: number) => {
     }
 };
 
+const isArchiveModalOpen = ref(false);
+const filterOverdueOnly = ref(false);
+
+const getFriendlyDueDate = (dueDate: string | null) => {
+    if (!dueDate) {
+return { text: '', class: '' };
+}
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const due = new Date(`${dueDate}T00:00:00`);
+    due.setHours(0, 0, 0, 0);
+
+    const diffTime = due.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+        return { text: 'Vence hoje', class: 'bg-amber-50 text-amber-700 border-amber-200/50 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30' };
+    } else if (diffDays === 1) {
+        return { text: 'Vence amanhã', class: 'bg-indigo-50 text-indigo-700 border-indigo-200/50 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/30' };
+    } else if (diffDays === -1) {
+        return { text: 'Venceu ontem', class: 'bg-rose-50 text-rose-700 border-rose-200/50 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30' };
+    } else if (diffDays < -1) {
+        return { text: `Atrasado há ${Math.abs(diffDays)} dias`, class: 'bg-rose-50 text-rose-700 border-rose-200/50 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30 font-bold' };
+    } else if (diffDays <= 7) {
+        return { text: `Vence em ${diffDays} dias`, class: 'bg-zinc-150 text-zinc-650 border-zinc-250 dark:bg-zinc-950/20 dark:text-zinc-350 dark:border-zinc-900/30' };
+    } else {
+        const formatted = new Intl.DateTimeFormat('pt-BR', {
+            day: '2-digit',
+            month: 'short',
+        }).format(due);
+
+        return { text: `Prazo: ${formatted}`, class: 'bg-zinc-100 text-zinc-550 border-zinc-200/50 dark:bg-zinc-950/20 dark:text-zinc-400 dark:border-zinc-900/30' };
+    }
+};
+
+const archiveTask = (task: Task) => {
+    router.put(`/tasks/${task.id}/archive`, {}, {
+        preserveScroll: true,
+        onSuccess: () => {
+            toast.success('Tarefa arquivada!', {
+                description: 'Você pode encontrá-la no painel de arquivadas.',
+                duration: 2000
+            });
+        }
+    });
+};
+
+const restoreTask = (task: Task) => {
+    router.put(`/tasks/${task.id}/restore`, {}, {
+        preserveScroll: true,
+        onSuccess: () => {
+            toast.success('Tarefa restaurada com sucesso!');
+        }
+    });
+};
+
 const matchesFilter = (task: Task) => {
     if (searchQuery.value) {
         const query = searchQuery.value.toLowerCase();
@@ -445,6 +495,12 @@ const matchesFilter = (task: Task) => {
 
     if (selectedFilterTags.value.length > 0) {
         if (!task.tags || !task.tags.some(tag => selectedFilterTags.value.includes(tag.id))) {
+            return false;
+        }
+    }
+
+    if (filterOverdueOnly.value) {
+        if (!task.due_date || !isOverdue(task.due_date)) {
             return false;
         }
     }
@@ -544,10 +600,20 @@ return 0;
                 </p>
             </div>
             
-            <Button @click="isColumnModalOpen = true" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm transition-all duration-200 gap-2 shrink-0">
-                <Plus class="size-4" />
-                Nova Coluna
-            </Button>
+            <div class="flex flex-wrap items-center gap-3 shrink-0">
+                <Button @click="isArchiveModalOpen = true" variant="outline" class="border-zinc-200 hover:bg-zinc-100 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-950/40 font-medium transition-all duration-200 gap-2">
+                    <Archive class="size-4" />
+                    Arquivadas
+                    <Badge v-if="props.archivedTasks.length" variant="secondary" class="ml-1 bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 font-bold text-[10px] rounded-full px-1.5 py-0.2">
+                        {{ props.archivedTasks.length }}
+                    </Badge>
+                </Button>
+
+                <Button @click="isColumnModalOpen = true" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm transition-all duration-200 gap-2">
+                    <Plus class="size-4" />
+                    Nova Coluna
+                </Button>
+            </div>
         </div>
 
         <!-- Dashboard Stats Grid -->
@@ -623,6 +689,19 @@ return 0;
                             {{ p === 'all' ? 'Todas' : p === 'low' ? 'Baixa' : p === 'medium' ? 'Média' : 'Alta' }}
                         </button>
                     </div>
+
+                    <!-- Overdue filter button -->
+                    <button
+                        @click="filterOverdueOnly = !filterOverdueOnly"
+                        :class="[
+                            'px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all duration-250 cursor-pointer select-none',
+                            filterOverdueOnly
+                                ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30 ring-2 ring-rose-500/20 scale-102'
+                                : 'bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-400 dark:border-zinc-800 dark:hover:bg-zinc-800'
+                        ]"
+                    >
+                        ⚠️ Apenas Vencidos
+                    </button>
                 </div>
             </div>
 
@@ -704,6 +783,9 @@ return 0;
                                             <button @click.stop="openEditTaskModal(t)" class="p-1 text-zinc-400 hover:text-indigo-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition" title="Editar">
                                                 <Pencil class="size-3.5" />
                                             </button>
+                                            <button @click.stop="archiveTask(t)" class="p-1 text-zinc-400 hover:text-amber-650 hover:bg-zinc-150 dark:hover:bg-zinc-800 rounded-md transition" title="Arquivar">
+                                                <Archive class="size-3.5" />
+                                            </button>
                                             <button @click.stop="openDeleteConfirm('task', t.id, t.title)" class="p-1 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md transition" title="Excluir">
                                                 <Trash2 class="size-3.5" />
                                             </button>
@@ -775,16 +857,11 @@ return 0;
                                                 <CheckSquare class="size-3" />
                                                 <span>{{ getCompletedSubtasksCount(t) }}/{{ t.subtasks.length }}</span>
                                             </span>
-
+                                            
                                             <!-- Due Date Badge -->
-                                            <span v-if="t.due_date" :class="[
-                                                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border tracking-wide',
-                                                isOverdue(t.due_date) 
-                                                    ? 'bg-rose-50 text-rose-700 border-rose-200/50 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30' 
-                                                    : 'bg-zinc-100 text-zinc-600 border-zinc-200/50 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700/50'
-                                            ]">
+                                            <span v-if="t.due_date" :class="['inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border tracking-wide', getFriendlyDueDate(t.due_date).class]">
                                                 <Clock class="size-3" />
-                                                <span>Prazo: {{ formatDueDate(t.due_date) }}</span>
+                                                <span>{{ getFriendlyDueDate(t.due_date).text }}</span>
                                             </span>
                                         </div>
                                     </div>
@@ -1079,6 +1156,58 @@ return 0;
             <DialogFooter class="mt-4 flex sm:justify-center gap-2">
                 <Button type="button" variant="ghost" @click="isDeleteModalOpen = false" class="flex-1">Cancelar</Button>
                 <Button type="button" variant="destructive" @click="executeDelete" class="flex-1">Excluir</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <!-- Archived Tasks Modal -->
+    <Dialog v-model:open="isArchiveModalOpen">
+        <DialogContent class="sm:max-w-[500px] border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+            <DialogHeader>
+                <DialogTitle class="text-lg font-bold text-zinc-900 dark:text-zinc-50">Tarefas Arquivadas</DialogTitle>
+                <DialogDescription class="text-zinc-500 dark:text-zinc-400 text-sm">
+                    Veja as tarefas que foram arquivadas. Você pode restaurá-las para o quadro ou excluí-las permanentemente.
+                </DialogDescription>
+            </DialogHeader>
+            <div class="space-y-3 max-h-[300px] overflow-y-auto pr-1 py-2">
+                <div 
+                    v-for="task in props.archivedTasks" 
+                    :key="task.id" 
+                    class="flex flex-col gap-2 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30"
+                >
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="min-w-0 flex-1">
+                            <h5 class="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate">{{ task.title }}</h5>
+                            <p v-if="task.description" class="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-1 mt-0.5">{{ task.description }}</p>
+                        </div>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <Button 
+                                @click="restoreTask(task)" 
+                                type="button" 
+                                size="sm" 
+                                variant="outline" 
+                                class="text-xs px-2 py-1 h-7 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-150"
+                            >
+                                Restaurar
+                            </Button>
+                            <Button 
+                                @click="openDeleteConfirm('task', task.id, task.title)" 
+                                type="button" 
+                                size="sm" 
+                                variant="destructive" 
+                                class="text-xs px-2 py-1 h-7 text-white bg-rose-600 hover:bg-rose-700"
+                            >
+                                Excluir
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="!props.archivedTasks.length" class="text-center py-8 text-xs text-zinc-450 dark:text-zinc-500 italic">
+                    Nenhuma tarefa arquivada no momento.
+                </div>
+            </div>
+            <DialogFooter class="pt-2">
+                <Button type="button" variant="outline" @click="isArchiveModalOpen = false">Fechar</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
