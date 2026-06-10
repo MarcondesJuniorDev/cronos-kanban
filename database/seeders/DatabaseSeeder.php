@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use App\Models\Task;
 use App\Models\Column;
+use App\Models\Task;
+use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -18,9 +18,9 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $user = User::factory()->create([
-            "name"=> "Developer",
-            "email"=> "dev@admin.com",
-            "password"=> bcrypt("M4rc0nd35"),
+            'name' => 'Developer',
+            'email' => 'dev@admin.com',
+            'password' => bcrypt('M4rc0nd35'),
         ]);
 
         $defaultColumns = [
@@ -39,7 +39,7 @@ class DatabaseSeeder extends Seeder
             $taskCount = rand(3, 5);
             for ($i = 0; $i < $taskCount; $i++) {
                 Task::factory()->create([
-                    'user_id'=> $user->id,
+                    'user_id' => $user->id,
                     'column_id' => $column->id,
                     'position' => $i,
                 ]);

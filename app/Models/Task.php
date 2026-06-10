@@ -2,15 +2,14 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use App\Models\User;
-use App\Models\Column;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Task extends Model
 {
     use HasFactory;
+
     protected $fillable = [
         'column_id',
         'user_id',
@@ -18,7 +17,7 @@ class Task extends Model
         'description',
         'position',
         'priority',
-        'due_date'
+        'due_date',
     ];
 
     public function column(): BelongsTo

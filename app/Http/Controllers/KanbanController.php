@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Models\Task;
 use App\Models\Column;
-use Illuminate\Validation\Rule;
+use App\Models\Task;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -24,11 +24,11 @@ class KanbanController extends Controller
 
         // Renderiza o componente Vue "Dashboard" injetando a coleção de colunas como prop
         return Inertia::render('Dashboard', [
-            'columns' => $columns
+            'columns' => $columns,
         ]);
     }
 
-public function storeColumn(Request $request): RedirectResponse
+    public function storeColumn(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'name' => 'required|string|max:55',
@@ -140,7 +140,7 @@ public function storeColumn(Request $request): RedirectResponse
             'tasks.*.id' => 'required|exists:tasks,id',
             'tasks.*.column_id' => [
                 'required',
-                Rule::exists('columns', 'id')->where('user_id', $request->user()->id) // Segurança: A coluna de destino DEVE ser do usuário
+                Rule::exists('columns', 'id')->where('user_id', $request->user()->id), // Segurança: A coluna de destino DEVE ser do usuário
             ],
             'tasks.*.position' => 'required|integer',
         ]);
@@ -153,7 +153,7 @@ public function storeColumn(Request $request): RedirectResponse
                     ->where('user_id', $request->user()->id)
                     ->update([
                         'column_id' => $taskData['column_id'],
-                        'position' => $taskData['position']
+                        'position' => $taskData['position'],
                     ]);
             }
         });
