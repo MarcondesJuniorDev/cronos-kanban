@@ -265,4 +265,89 @@ class KanbanController extends Controller
 
         return back();
     }
+
+    /**
+     * Importa o quadro inteiro a partir de um arquivo JSON.
+     */
+    public function importBoard(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:json',
+        ]);
+
+        $json = file_get_contents($request->file('file')->getRealPath());
+        $data = json_decode($json, true);
+
+        if (! $data || ! is_array($data)) {
+            return back()->withErrors(['file' => 'Arquivo JSON inválido.']);
+        }
+
+        \DB::transaction(function () use ($data, $request) {
+            $user = $request->user();
+
+            // Limpa dados existentes do usuário
+            $user->columns()->delete();
+            $user->tags()->delete();
+
+            // Recria as etiquetas primeiro, guardando mapa de IDs antigos para novos
+            $tagIdMap = [];
+            if (! empty($data['tags'])) {
+                foreach ($data['tags'] as $tagData) {
+                    $newTag = $user->tags()->create([
+                        'name' => $tagData['name'],
+                        'color' => $tagData['color'],
+                    ]);
+                    $tagIdMap[$tagData['id']] = $newTag->id;
+                }
+            }
+
+            // Recria as colunas e tarefas
+            if (! empty($data['columns'])) {
+                foreach ($data['columns'] as $colData) {
+                    $column = $user->columns()->create([
+                        'name' => $colData['name'],
+                        'position' => $colData['position'],
+                    ]);
+
+                    if (! empty($colData['tasks'])) {
+                        foreach ($colData['tasks'] as $taskData) {
+                            /** @var Task $task */
+                            $task = Task::create([
+                                'user_id' => $user->id,
+                                'column_id' => $column->id,
+                                'title' => $taskData['title'],
+                                'description' => $taskData['description'] ?? null,
+                                'priority' => $taskData['priority'],
+                                'due_date' => $taskData['due_date'] ?? null,
+                                'position' => $taskData['position'],
+                                'is_archived' => $taskData['is_archived'] ?? false,
+                            ]);
+
+                            if (! empty($taskData['subtasks'])) {
+                                foreach ($taskData['subtasks'] as $subData) {
+                                    $task->subtasks()->create([
+                                        'title' => $subData['title'],
+                                        'is_completed' => $subData['is_completed'] ?? false,
+                                        'position' => $subData['position'],
+                                    ]);
+                                }
+                            }
+
+                            if (! empty($taskData['tags'])) {
+                                $newTagIds = [];
+                                foreach ($taskData['tags'] as $oldTag) {
+                                    if (isset($tagIdMap[$oldTag['id']])) {
+                                        $newTagIds[] = $tagIdMap[$oldTag['id']];
+                                    }
+                                }
+                                $task->tags()->sync($newTagIds);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        return back();
+    }
 }

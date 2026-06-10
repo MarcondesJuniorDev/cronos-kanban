@@ -13,7 +13,10 @@ import {
     ListTodo,
     GripVertical,
     Search,
-    Archive
+    Archive,
+    Download,
+    Upload,
+    BarChart3
 } from '@lucide/vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
@@ -476,6 +479,135 @@ const restoreTask = (task: Task) => {
     });
 };
 
+const isMetricsModalOpen = ref(false);
+
+const priorityStats = computed(() => {
+    let low = 0, medium = 0, high = 0;
+    localColumns.value.forEach(column => {
+        column.tasks.forEach(task => {
+            if (task.priority === 'low') {
+low++;
+} else if (task.priority === 'medium') {
+medium++;
+} else if (task.priority === 'high') {
+high++;
+}
+        });
+    });
+    const total = low + medium + high || 1;
+
+    return {
+        low,
+        medium,
+        high,
+        lowPct: Math.round((low / total) * 100),
+        mediumPct: Math.round((medium / total) * 100),
+        highPct: Math.round((high / total) * 100),
+    };
+});
+
+const subtaskStats = computed(() => {
+    let total = 0;
+    let completed = 0;
+    localColumns.value.forEach(column => {
+        column.tasks.forEach(task => {
+            if (task.subtasks) {
+                total += task.subtasks.length;
+                completed += task.subtasks.filter(s => s.is_completed).length;
+            }
+        });
+    });
+
+    return {
+        total,
+        completed,
+        pct: total > 0 ? Math.round((completed / total) * 100) : 0,
+    };
+});
+
+const overdueStats = computed(() => {
+    let count = 0;
+    localColumns.value.forEach(column => {
+        column.tasks.forEach(task => {
+            if (task.due_date && isOverdue(task.due_date)) {
+                count++;
+            }
+        });
+    });
+
+    return count;
+});
+
+const fileInput = ref<HTMLInputElement | null>(null);
+const isImporting = ref(false);
+
+const exportBoard = () => {
+    const dataStr = JSON.stringify({
+        columns: props.columns,
+        tags: props.tags
+    }, null, 2);
+    
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const exportFileDefaultName = `cronos-kanban-backup-${new Date().toISOString().split('T')[0]}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+    
+    toast.success('Quadro exportado com sucesso!', {
+        description: 'Seu arquivo de backup foi baixado.'
+    });
+};
+
+const triggerImportFile = () => {
+    if (fileInput.value) {
+        fileInput.value.click();
+    }
+};
+
+const handleImportFile = (event: Event) => {
+    const target = event.target as HTMLInputElement;
+
+    if (!target.files || target.files.length === 0) {
+return;
+}
+    
+    const file = target.files[0];
+
+    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+        toast.error('Por favor, envie um arquivo .json válido.');
+
+        return;
+    }
+    
+    if (!confirm('Atenção: A importação irá substituir completamente todas as colunas, tarefas e etiquetas atuais. Deseja prosseguir?')) {
+        target.value = ''; // Reset input
+
+        return;
+    }
+    
+    isImporting.value = true;
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    router.post('/board/import', formData, {
+        onSuccess: () => {
+            toast.success('Quadro restaurado com sucesso!', {
+                description: 'Todos os dados foram atualizados do backup.'
+            });
+            isImporting.value = false;
+            target.value = '';
+        },
+        onError: (err) => {
+            const message = err.file || 'Erro ao processar importação.';
+            toast.error(message);
+            isImporting.value = false;
+            target.value = '';
+        }
+    });
+};
+
 const matchesFilter = (task: Task) => {
     if (searchQuery.value) {
         const query = searchQuery.value.toLowerCase();
@@ -601,6 +733,31 @@ return 0;
             </div>
             
             <div class="flex flex-wrap items-center gap-3 shrink-0">
+                <!-- Hidden file input for import -->
+                <input 
+                    type="file" 
+                    ref="fileInput" 
+                    class="hidden" 
+                    accept=".json,application/json" 
+                    @change="handleImportFile" 
+                />
+
+                <Button @click="exportBoard" variant="outline" class="border-zinc-200 hover:bg-zinc-100 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-950/40 font-medium transition-all duration-200 gap-2">
+                    <Download class="size-4" />
+                    Exportar
+                </Button>
+
+                <Button @click="triggerImportFile" variant="outline" class="border-zinc-200 hover:bg-zinc-100 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-950/40 font-medium transition-all duration-200 gap-2" :disabled="isImporting">
+                    <Upload class="size-4 animate-bounce" v-if="isImporting" />
+                    <Upload class="size-4" v-else />
+                    Importar
+                </Button>
+
+                <Button @click="isMetricsModalOpen = true" variant="outline" class="border-zinc-200 hover:bg-zinc-100 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-950/40 font-medium transition-all duration-200 gap-2">
+                    <BarChart3 class="size-4" />
+                    Métricas
+                </Button>
+
                 <Button @click="isArchiveModalOpen = true" variant="outline" class="border-zinc-200 hover:bg-zinc-100 text-zinc-700 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-950/40 font-medium transition-all duration-200 gap-2">
                     <Archive class="size-4" />
                     Arquivadas
@@ -1208,6 +1365,95 @@ return 0;
             </div>
             <DialogFooter class="pt-2">
                 <Button type="button" variant="outline" @click="isArchiveModalOpen = false">Fechar</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <!-- Productivity Metrics Modal -->
+    <Dialog v-model:open="isMetricsModalOpen">
+        <DialogContent class="sm:max-w-[500px] border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+            <DialogHeader>
+                <DialogTitle class="text-lg font-bold text-zinc-900 dark:text-zinc-50">Métricas e Produtividade</DialogTitle>
+                <DialogDescription class="text-zinc-500 dark:text-zinc-400 text-sm">
+                    Acompanhe indicadores-chave de desempenho e status do seu quadro Kanban.
+                </DialogDescription>
+            </DialogHeader>
+            <div class="space-y-6 py-2">
+                <!-- Summary Stats Grid -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-zinc-50 dark:bg-zinc-900/50 p-3.5 rounded-xl border border-zinc-150 dark:border-zinc-850">
+                        <div class="text-[10px] font-bold text-zinc-455 dark:text-zinc-500 uppercase tracking-wider">Tarefas Ativas</div>
+                        <div class="text-xl font-bold text-zinc-900 dark:text-zinc-50 mt-0.5">{{ totalTasks }}</div>
+                    </div>
+                    <div class="bg-zinc-50 dark:bg-zinc-900/50 p-3.5 rounded-xl border border-zinc-150 dark:border-zinc-850">
+                        <div class="text-[10px] font-bold text-zinc-455 dark:text-zinc-500 uppercase tracking-wider">Tarefas Vencidas</div>
+                        <div class="text-xl font-bold mt-0.5 text-rose-650 dark:text-rose-455">{{ overdueStats }}</div>
+                    </div>
+                    <div class="bg-zinc-50 dark:bg-zinc-900/50 p-3.5 rounded-xl border border-zinc-150 dark:border-zinc-850">
+                        <div class="text-[10px] font-bold text-zinc-455 dark:text-zinc-500 uppercase tracking-wider">Checklist (Itens Concluídos)</div>
+                        <div class="text-xl font-bold text-zinc-900 dark:text-zinc-50 mt-0.5">{{ subtaskStats.completed }} / {{ subtaskStats.total }}</div>
+                    </div>
+                    <div class="bg-zinc-50 dark:bg-zinc-900/50 p-3.5 rounded-xl border border-zinc-150 dark:border-zinc-850">
+                        <div class="text-[10px] font-bold text-zinc-455 dark:text-zinc-500 uppercase tracking-wider">Conclusão Geral</div>
+                        <div class="text-xl font-bold text-emerald-650 dark:text-emerald-455 mt-0.5">{{ subtaskStats.pct }}%</div>
+                    </div>
+                </div>
+
+                <!-- Priority Breakdown Progress Bars -->
+                <div class="space-y-3">
+                    <h5 class="text-xs font-bold uppercase tracking-wider text-zinc-550 dark:text-zinc-450">Distribuição por Prioridade</h5>
+                    <div class="space-y-2">
+                        <!-- High Priority -->
+                        <div>
+                            <div class="flex justify-between text-xs font-medium text-zinc-650 dark:text-zinc-400 mb-1">
+                                <span>Alta</span>
+                                <span>{{ priorityStats.high }} ({{ priorityStats.highPct }}%)</span>
+                            </div>
+                            <div class="w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-2 overflow-hidden">
+                                <div class="bg-rose-500 h-2 rounded-full transition-all duration-300" :style="{ width: `${priorityStats.highPct}%` }" />
+                            </div>
+                        </div>
+                        <!-- Medium Priority -->
+                        <div>
+                            <div class="flex justify-between text-xs font-medium text-zinc-655 dark:text-zinc-400 mb-1">
+                                <span>Média</span>
+                                <span>{{ priorityStats.medium }} ({{ priorityStats.mediumPct }}%)</span>
+                            </div>
+                            <div class="w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-2 overflow-hidden">
+                                <div class="bg-amber-500 h-2 rounded-full transition-all duration-300" :style="{ width: `${priorityStats.mediumPct}%` }" />
+                            </div>
+                        </div>
+                        <!-- Low Priority -->
+                        <div>
+                            <div class="flex justify-between text-xs font-medium text-zinc-655 dark:text-zinc-400 mb-1">
+                                <span>Baixa</span>
+                                <span>{{ priorityStats.low }} ({{ priorityStats.lowPct }}%)</span>
+                            </div>
+                            <div class="w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-2 overflow-hidden">
+                                <div class="bg-emerald-500 h-2 rounded-full transition-all duration-300" :style="{ width: `${priorityStats.lowPct}%` }" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tasks Per Column Progress Bars -->
+                <div class="space-y-3 pt-2 border-t border-zinc-200/60 dark:border-zinc-850">
+                    <h5 class="text-xs font-bold uppercase tracking-wider text-zinc-550 dark:text-zinc-450">Carga de Trabalho por Coluna</h5>
+                    <div class="space-y-2">
+                        <div v-for="col in localColumns" :key="col.id">
+                            <div class="flex justify-between text-xs font-medium text-zinc-655 dark:text-zinc-400 mb-1">
+                                <span>{{ col.name }}</span>
+                                <span>{{ col.tasks.length }} tarefas</span>
+                            </div>
+                            <div class="w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-2 overflow-hidden">
+                                <div class="bg-indigo-650 dark:bg-indigo-500 h-2 rounded-full transition-all duration-300" :style="{ width: `${totalTasks > 0 ? (col.tasks.length / totalTasks) * 100 : 0}%` }" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <DialogFooter class="pt-2">
+                <Button type="button" variant="outline" @click="isMetricsModalOpen = false">Fechar</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
