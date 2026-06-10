@@ -44,6 +44,12 @@ defineOptions({
     },
 });
 
+interface Tag {
+    id: number;
+    name: string;
+    color: string;
+}
+
 interface Subtask {
     id: number;
     task_id: number;
@@ -61,6 +67,7 @@ interface Task {
     due_date: string | null;
     position: number;
     subtasks?: Subtask[];
+    tags?: Tag[];
 }
 
 interface Column {
@@ -72,6 +79,7 @@ interface Column {
 
 const props = defineProps<{
     columns: Column[];
+    tags: Tag[];
 }>();
 
 const cloneAndSortColumns = (columns: Column[]) => {
@@ -142,7 +150,14 @@ const deleteTargetId = ref<number | null>(null);
 const deleteTargetName = ref('');
 
 const columnForm = useForm({ name: '' });
-const taskForm = useForm({ column_id: '', title: '', description: '', priority: 'medium', due_date: '' });
+const taskForm = useForm({
+    column_id: '',
+    title: '',
+    description: '',
+    priority: 'medium',
+    due_date: '',
+    tag_ids: [] as number[],
+});
 
 const submitColumn = () => {
     columnForm.post(columnsRoutes.store.url(), {
@@ -159,6 +174,7 @@ const openTaskModal = (columnId: number) => {
     editingTaskId.value = null;
     taskForm.reset();
     taskForm.column_id = columnId.toString();
+    taskForm.tag_ids = [];
     isTaskModalOpen.value = true;
 };
 
@@ -170,6 +186,7 @@ const openEditTaskModal = (task: Task) => {
     taskForm.description = task.description || '';
     taskForm.priority = task.priority;
     taskForm.due_date = task.due_date || '';
+    taskForm.tag_ids = task.tags ? task.tags.map(t => t.id) : [];
     isTaskModalOpen.value = true;
 };
 
@@ -272,6 +289,142 @@ const isOverdue = (dueDate: string | null) => {
 
 const searchQuery = ref('');
 const selectedPriority = ref<'all' | 'low' | 'medium' | 'high'>('all');
+const selectedFilterTags = ref<number[]>([]);
+
+const getTagColorConfig = (color: string) => {
+    const colors: Record<string, { bg: string; text: string; border: string }> = {
+        red: {
+            bg: 'bg-rose-50/70 text-rose-700 border-rose-200/50 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30',
+            text: 'text-rose-700 dark:text-rose-400',
+            border: 'border-rose-200/50 dark:border-rose-900/30',
+        },
+        blue: {
+            bg: 'bg-blue-50/70 text-blue-700 border-blue-200/50 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/30',
+            text: 'text-blue-700 dark:text-blue-400',
+            border: 'border-blue-200/50 dark:border-blue-900/30',
+        },
+        green: {
+            bg: 'bg-emerald-50/70 text-emerald-700 border-emerald-200/50 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30',
+            text: 'text-emerald-700 dark:text-emerald-400',
+            border: 'border-emerald-200/50 dark:border-emerald-900/30',
+        },
+        amber: {
+            bg: 'bg-amber-50/70 text-amber-700 border-amber-200/50 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30',
+            text: 'text-amber-700 dark:text-amber-400',
+            border: 'border-amber-200/50 dark:border-amber-900/30',
+        },
+        purple: {
+            bg: 'bg-purple-50/70 text-purple-700 border-purple-200/50 dark:bg-purple-950/20 dark:text-purple-400 dark:border-purple-900/30',
+            text: 'text-purple-700 dark:text-purple-400',
+            border: 'border-purple-200/50 dark:border-purple-900/30',
+        },
+        orange: {
+            bg: 'bg-orange-50/70 text-orange-700 border-orange-200/50 dark:bg-orange-950/20 dark:text-orange-400 dark:border-orange-900/30',
+            text: 'text-orange-700 dark:text-orange-400',
+            border: 'border-orange-200/50 dark:border-orange-900/30',
+        },
+        pink: {
+            bg: 'bg-pink-50/70 text-pink-700 border-pink-200/50 dark:bg-pink-950/20 dark:text-pink-400 dark:border-pink-900/30',
+            text: 'text-pink-700 dark:text-pink-400',
+            border: 'border-pink-200/50 dark:border-pink-900/30',
+        },
+        indigo: {
+            bg: 'bg-indigo-50/70 text-indigo-700 border-indigo-200/50 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/30',
+            text: 'text-indigo-700 dark:text-indigo-400',
+            border: 'border-indigo-200/50 dark:border-indigo-900/30',
+        },
+        gray: {
+            bg: 'bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-950/20 dark:text-zinc-400 dark:border-zinc-900/30',
+            text: 'text-zinc-700 dark:text-zinc-400',
+            border: 'border-zinc-200/50 dark:border-zinc-900/30',
+        },
+    };
+
+    return colors[color] || colors.gray;
+};
+
+const toggleTagFilter = (tagId: number) => {
+    const index = selectedFilterTags.value.indexOf(tagId);
+
+    if (index > -1) {
+        selectedFilterTags.value.splice(index, 1);
+    } else {
+        selectedFilterTags.value.push(tagId);
+    }
+};
+
+const newTagName = ref('');
+const newTagColor = ref('blue');
+const isCreatingTag = ref(false);
+
+const colorOptions = [
+    { name: 'red', bg: 'bg-rose-500', label: 'Vermelho' },
+    { name: 'blue', bg: 'bg-blue-500', label: 'Azul' },
+    { name: 'green', bg: 'bg-emerald-500', label: 'Verde' },
+    { name: 'amber', bg: 'bg-amber-500', label: 'Amarelo' },
+    { name: 'purple', bg: 'bg-purple-500', label: 'Roxo' },
+    { name: 'orange', bg: 'bg-orange-500', label: 'Laranja' },
+    { name: 'pink', bg: 'bg-pink-500', label: 'Rosa' },
+    { name: 'indigo', bg: 'bg-indigo-500', label: 'Índigo' },
+    { name: 'gray', bg: 'bg-zinc-500', label: 'Cinza' },
+];
+
+const createCustomTag = () => {
+    if (!newTagName.value.trim()) {
+        toast.error('Informe um nome para a etiqueta.');
+
+        return;
+    }
+
+    isCreatingTag.value = true;
+    router.post('/tags', {
+        name: newTagName.value.trim(),
+        color: newTagColor.value,
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            newTagName.value = '';
+            toast.success('Etiqueta criada com sucesso!');
+            isCreatingTag.value = false;
+        },
+        onError: () => {
+            toast.error('Erro ao criar etiqueta.');
+            isCreatingTag.value = false;
+        }
+    });
+};
+
+const deleteSystemTag = (tag: Tag) => {
+    if (confirm(`Tem certeza que deseja excluir permanentemente a etiqueta "${tag.name}"? Isso removerá a etiqueta de todas as tarefas.`)) {
+        router.delete(`/tags/${tag.id}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                toast.success('Etiqueta excluída!');
+                const index = taskForm.tag_ids.indexOf(tag.id);
+
+                if (index > -1) {
+                    taskForm.tag_ids.splice(index, 1);
+                }
+
+                const filterIndex = selectedFilterTags.value.indexOf(tag.id);
+
+                if (filterIndex > -1) {
+                    selectedFilterTags.value.splice(filterIndex, 1);
+                }
+            }
+        });
+    }
+};
+
+const toggleFormTag = (tagId: number) => {
+    const idx = taskForm.tag_ids.indexOf(tagId);
+
+    if (idx > -1) {
+        taskForm.tag_ids.splice(idx, 1);
+    } else {
+        taskForm.tag_ids.push(tagId);
+    }
+};
 
 const matchesFilter = (task: Task) => {
     if (searchQuery.value) {
@@ -286,6 +439,12 @@ const matchesFilter = (task: Task) => {
 
     if (selectedPriority.value !== 'all') {
         if (task.priority !== selectedPriority.value) {
+            return false;
+        }
+    }
+
+    if (selectedFilterTags.value.length > 0) {
+        if (!task.tags || !task.tags.some(tag => selectedFilterTags.value.includes(tag.id))) {
             return false;
         }
     }
@@ -427,42 +586,69 @@ return 0;
         </div>
 
         <!-- Search and Filters Bar -->
-        <div v-if="hasColumns" class="flex flex-col gap-4 rounded-xl border border-zinc-200/80 bg-white/60 p-4 shadow-2xs backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/40 md:flex-row md:items-center md:justify-between">
-            <div class="relative flex-1 max-w-md">
-                <span class="absolute inset-y-0 left-3 flex items-center text-zinc-400 dark:text-zinc-500">
-                    <Search class="size-4" />
-                </span>
-                <Input
-                    v-model="searchQuery"
-                    placeholder="Buscar tarefas pelo título ou descrição..."
-                    class="pl-9 h-9 border-zinc-200 focus:border-indigo-500 focus:ring-indigo-500 dark:border-zinc-800 dark:bg-zinc-950/50"
-                />
-                <button
-                    v-if="searchQuery"
-                    @click="searchQuery = ''"
-                    class="absolute inset-y-0 right-3 flex items-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
-                >
-                    <X class="size-4" />
-                </button>
-            </div>
-            
-            <div class="flex flex-wrap items-center gap-3">
-                <span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Filtrar por Prioridade:</span>
-                <div class="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-zinc-200/50 dark:border-zinc-700/50">
+        <div v-if="hasColumns" class="flex flex-col gap-4 rounded-xl border border-zinc-200/80 bg-white/60 p-4 shadow-2xs backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/40">
+            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div class="relative flex-1 max-w-md">
+                    <span class="absolute inset-y-0 left-3 flex items-center text-zinc-400 dark:text-zinc-500">
+                        <Search class="size-4" />
+                    </span>
+                    <Input
+                        v-model="searchQuery"
+                        placeholder="Buscar tarefas pelo título ou descrição..."
+                        class="pl-9 h-9 border-zinc-200 focus:border-indigo-500 focus:ring-indigo-500 dark:border-zinc-800 dark:bg-zinc-950/50"
+                    />
                     <button
-                        v-for="p in ['all', 'low', 'medium', 'high'] as const"
-                        :key="p"
-                        @click="selectedPriority = p"
-                        :class="[
-                            'px-3 py-1 text-xs font-medium rounded-md transition duration-150',
-                            selectedPriority === p
-                                ? 'bg-white text-zinc-900 shadow-2xs dark:bg-zinc-700 dark:text-zinc-100'
-                                : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
-                        ]"
+                        v-if="searchQuery"
+                        @click="searchQuery = ''"
+                        class="absolute inset-y-0 right-3 flex items-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
                     >
-                        {{ p === 'all' ? 'Todas' : p === 'low' ? 'Baixa' : p === 'medium' ? 'Média' : 'Alta' }}
+                        <X class="size-4" />
                     </button>
                 </div>
+                
+                <div class="flex flex-wrap items-center gap-3">
+                    <span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Filtrar por Prioridade:</span>
+                    <div class="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg border border-zinc-200/50 dark:border-zinc-700/50">
+                        <button
+                            v-for="p in ['all', 'low', 'medium', 'high'] as const"
+                            :key="p"
+                            @click="selectedPriority = p"
+                            :class="[
+                                'px-3 py-1 text-xs font-medium rounded-md transition duration-150',
+                                selectedPriority === p
+                                    ? 'bg-white text-zinc-900 shadow-2xs dark:bg-zinc-700 dark:text-zinc-100'
+                                    : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+                            ]"
+                        >
+                            {{ p === 'all' ? 'Todas' : p === 'low' ? 'Baixa' : p === 'medium' ? 'Média' : 'Alta' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tags Filter Row -->
+            <div v-if="props.tags.length > 0" class="flex flex-wrap items-center gap-2 pt-3 border-t border-zinc-200/60 dark:border-zinc-800/80">
+                <span class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mr-1">Filtrar por Etiquetas:</span>
+                <button
+                    v-for="tag in props.tags"
+                    :key="tag.id"
+                    @click="toggleTagFilter(tag.id)"
+                    :class="[
+                        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border transition-all duration-150 cursor-pointer select-none',
+                        selectedFilterTags.includes(tag.id)
+                            ? `${getTagColorConfig(tag.color).bg} ring-2 ring-indigo-500/50 ring-offset-1 dark:ring-offset-zinc-900 scale-105`
+                            : 'bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-400 dark:border-zinc-800 dark:hover:bg-zinc-800'
+                    ]"
+                >
+                    {{ tag.name }}
+                </button>
+                <button
+                    v-if="selectedFilterTags.length > 0"
+                    @click="selectedFilterTags = []"
+                    class="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium transition cursor-pointer select-none ml-2"
+                >
+                    Limpar Filtros
+                </button>
             </div>
         </div>
 
@@ -521,6 +707,17 @@ return 0;
                                             <button @click.stop="openDeleteConfirm('task', t.id, t.title)" class="p-1 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md transition" title="Excluir">
                                                 <Trash2 class="size-3.5" />
                                             </button>
+                                        </div>
+
+                                        <!-- Card Tags -->
+                                        <div v-if="t.tags && t.tags.length" class="flex flex-wrap gap-1 mb-2 pr-12">
+                                            <span 
+                                                v-for="tag in t.tags" 
+                                                :key="tag.id"
+                                                :class="['inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold border', getTagColorConfig(tag.color).bg]"
+                                            >
+                                                {{ tag.name }}
+                                            </span>
                                         </div>
 
                                         <!-- Card Title -->
@@ -702,6 +899,78 @@ return 0;
                                     </div>
                                 </div>
                                 
+                                <!-- Tags / Etiquetas selection & creation section inside task modal -->
+                                <div class="border-t border-zinc-200 dark:border-zinc-800 pt-4 space-y-3">
+                                    <Label class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Etiquetas / Tags</Label>
+                                    
+                                    <!-- List of all available user tags -->
+                                    <div class="flex flex-wrap gap-2">
+                                        <button
+                                            v-for="tag in props.tags"
+                                            :key="tag.id"
+                                            type="button"
+                                            @click="toggleFormTag(tag.id)"
+                                            :class="[
+                                                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border transition duration-150 cursor-pointer select-none',
+                                                taskForm.tag_ids.includes(tag.id)
+                                                    ? getTagColorConfig(tag.color).bg + ' ring-2 ring-indigo-500/50'
+                                                    : 'bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100 dark:bg-zinc-900/50 dark:text-zinc-400 dark:border-zinc-800 dark:hover:bg-zinc-900'
+                                            ]"
+                                        >
+                                            {{ tag.name }}
+                                            <span 
+                                                @click.stop="deleteSystemTag(tag)" 
+                                                class="text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 ml-0.5 rounded-full p-0.5"
+                                                title="Excluir etiqueta do sistema"
+                                            >
+                                                <X class="size-3" />
+                                            </span>
+                                        </button>
+                                        <div v-if="!props.tags.length" class="text-xs text-zinc-400 dark:text-zinc-500 italic">
+                                            Nenhuma etiqueta criada ainda.
+                                        </div>
+                                    </div>
+
+                                    <!-- Create custom tag inline form -->
+                                    <div class="bg-zinc-50 dark:bg-zinc-900/30 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-2.5">
+                                        <div class="text-xs font-bold text-zinc-700 dark:text-zinc-300">Nova Etiqueta</div>
+                                        <div class="flex gap-2">
+                                            <Input 
+                                                v-model="newTagName" 
+                                                type="text" 
+                                                placeholder="Nome da etiqueta..." 
+                                                class="flex-1 h-8 text-xs"
+                                                @keydown.enter.prevent="createCustomTag"
+                                            />
+                                            <Button 
+                                                type="button" 
+                                                @click="createCustomTag" 
+                                                class="h-8 px-3 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+                                                :disabled="isCreatingTag"
+                                            >
+                                                Criar
+                                            </Button>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2 items-center">
+                                            <span class="text-[10px] text-zinc-500 uppercase tracking-wider">Cor:</span>
+                                            <button
+                                                v-for="colorOpt in colorOptions"
+                                                :key="colorOpt.name"
+                                                type="button"
+                                                @click="newTagColor = colorOpt.name"
+                                                :class="[
+                                                    'size-5 rounded-full border transition-all duration-150',
+                                                    colorOpt.bg,
+                                                    newTagColor === colorOpt.name
+                                                        ? 'ring-2 ring-indigo-500 scale-110 border-white'
+                                                        : 'border-zinc-300 dark:border-zinc-700 hover:scale-105'
+                                                ]"
+                                                :title="colorOpt.label"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <!-- Subtasks checklist editor inside task modal -->
                                 <div v-if="isEditMode" class="border-t border-zinc-200 dark:border-zinc-800 pt-4 space-y-3">
                                     <Label class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Subtarefas / Checklist</Label>

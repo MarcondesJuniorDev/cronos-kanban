@@ -14,17 +14,36 @@ class KanbanController extends Controller
 {
     public function index(Request $request): Response
     {
+        $user = $request->user();
+
+        // Auto-seed default tags if user has none
+        if ($user->tags()->count() === 0) {
+            $defaultTags = [
+                ['name' => 'Bug', 'color' => 'red'],
+                ['name' => 'Recurso', 'color' => 'blue'],
+                ['name' => 'Melhoria', 'color' => 'green'],
+                ['name' => 'Urgente', 'color' => 'amber'],
+                ['name' => 'Refatoração', 'color' => 'purple'],
+            ];
+            foreach ($defaultTags as $dt) {
+                $user->tags()->create($dt);
+            }
+        }
+
+        $tags = $user->tags()->get();
+
         // Busca as colunas do usuário logado trazendo junto suas respectivas tarefas ordenadas por posição
-        $columns = $request->user()->columns()
+        $columns = $user->columns()
             ->orderBy('position')
             ->with(['tasks' => function ($query) {
-                $query->orderBy('position')->with('subtasks');
+                $query->orderBy('position')->with(['subtasks', 'tags']);
             }])
             ->get();
 
         // Renderiza o componente Vue "Dashboard" injetando a coleção de colunas como prop
         return Inertia::render('Dashboard', [
             'columns' => $columns,
+            'tags' => $tags,
         ]);
     }
 
@@ -72,6 +91,11 @@ class KanbanController extends Controller
             'description' => 'nullable|string',
             'priority' => 'required|in:low,medium,high',
             'due_date' => 'nullable|date',
+            'tag_ids' => 'nullable|array',
+            'tag_ids.*' => [
+                'required',
+                Rule::exists('tags', 'id')->where('user_id', $request->user()->id),
+            ],
         ]);
 
         // Garante que a coluna informada realmente pertence ao usuário logado
@@ -82,15 +106,20 @@ class KanbanController extends Controller
         $maxPosition = $column->tasks()->max('position');
         $nextPosition = is_null($maxPosition) ? 0 : $maxPosition + 1;
 
-        Task::create([
+        /** @var Task $task */
+        $task = Task::create([
             'user_id' => $request->user()->id,
             'column_id' => $column->id,
             'title' => $validated['title'],
-            'description' => $validated['description'],
+            'description' => $validated['description'] ?? null,
             'priority' => $validated['priority'],
-            'due_date' => $validated['due_date'],
+            'due_date' => $validated['due_date'] ?? null,
             'position' => $nextPosition,
         ]);
+
+        if (! empty($validated['tag_ids'])) {
+            $task->tags()->sync($validated['tag_ids']);
+        }
 
         return back();
     }
@@ -109,9 +138,21 @@ class KanbanController extends Controller
             'description' => 'nullable|string',
             'priority' => 'required|in:low,medium,high',
             'due_date' => 'nullable|date',
+            'tag_ids' => 'nullable|array',
+            'tag_ids.*' => [
+                'required',
+                Rule::exists('tags', 'id')->where('user_id', $request->user()->id),
+            ],
         ]);
 
-        $task->update($validated);
+        $task->update([
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'priority' => $validated['priority'],
+            'due_date' => $validated['due_date'] ?? null,
+        ]);
+
+        $task->tags()->sync($validated['tag_ids'] ?? []);
 
         return back();
     }

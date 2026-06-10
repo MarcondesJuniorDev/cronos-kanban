@@ -64,4 +64,12 @@ class User extends Authenticatable implements PasskeyUser
     {
         return $this->hasMany(Task::class);
     }
+
+    /**
+     * @return HasMany<Tag, $this>
+     */
+    public function tags(): HasMany
+    {
+        return $this->hasMany(Tag::class);
+    }
 }

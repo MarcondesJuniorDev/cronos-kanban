@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\KanbanController;
+use App\Http\Controllers\SubtaskController;
+use App\Http\Controllers\TagController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
@@ -24,9 +26,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/tasks/{task}', [KanbanController::class, 'destroyTask'])->name('tasks.destroy');
 
     // Rotas de gerenciamento de Subtarefas (Checklist)
-    Route::post('/subtasks', [\App\Http\Controllers\SubtaskController::class, 'store'])->name('subtasks.store');
-    Route::put('/subtasks/{subtask}', [\App\Http\Controllers\SubtaskController::class, 'update'])->name('subtasks.update');
-    Route::delete('/subtasks/{subtask}', [\App\Http\Controllers\SubtaskController::class, 'destroy'])->name('subtasks.destroy');
+    Route::post('/subtasks', [SubtaskController::class, 'store'])->name('subtasks.store');
+    Route::put('/subtasks/{subtask}', [SubtaskController::class, 'update'])->name('subtasks.update');
+    Route::delete('/subtasks/{subtask}', [SubtaskController::class, 'destroy'])->name('subtasks.destroy');
+
+    // Rotas de gerenciamento de Etiquetas / Tags
+    Route::post('/tags', [TagController::class, 'store'])->name('tags.store');
+    Route::delete('/tags/{tag}', [TagController::class, 'destroy'])->name('tags.destroy');
 });
 
 require __DIR__.'/settings.php';
