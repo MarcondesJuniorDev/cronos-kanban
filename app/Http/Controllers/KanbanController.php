@@ -18,7 +18,7 @@ class KanbanController extends Controller
         $columns = $request->user()->columns()
             ->orderBy('position')
             ->with(['tasks' => function ($query) {
-                $query->orderBy('position');
+                $query->orderBy('position')->with('subtasks');
             }])
             ->get();
 

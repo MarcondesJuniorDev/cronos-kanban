@@ -22,6 +22,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::put('/tasks/{task}', [KanbanController::class, 'updateTask'])->name('tasks.update');
     Route::delete('/tasks/{task}', [KanbanController::class, 'destroyTask'])->name('tasks.destroy');
+
+    // Rotas de gerenciamento de Subtarefas (Checklist)
+    Route::post('/subtasks', [\App\Http\Controllers\SubtaskController::class, 'store'])->name('subtasks.store');
+    Route::put('/subtasks/{subtask}', [\App\Http\Controllers\SubtaskController::class, 'update'])->name('subtasks.update');
+    Route::delete('/subtasks/{subtask}', [\App\Http\Controllers\SubtaskController::class, 'destroy'])->name('subtasks.destroy');
 });
 
 require __DIR__.'/settings.php';

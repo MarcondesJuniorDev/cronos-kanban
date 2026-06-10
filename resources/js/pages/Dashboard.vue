@@ -30,6 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import columnsRoutes from '@/routes/columns';
+import subtasksRoutes from '@/routes/subtasks';
 import tasksRoutes from '@/routes/tasks';
 
 defineOptions({
@@ -43,6 +44,14 @@ defineOptions({
     },
 });
 
+interface Subtask {
+    id: number;
+    task_id: number;
+    title: string;
+    is_completed: boolean;
+    position: number;
+}
+
 interface Task {
     id: number;
     column_id: number;
@@ -51,6 +60,7 @@ interface Task {
     priority: 'low' | 'medium' | 'high';
     due_date: string | null;
     position: number;
+    subtasks?: Subtask[];
 }
 
 interface Column {
@@ -288,6 +298,69 @@ const filteredTasksCount = computed(() => {
         return count + column.tasks.filter(matchesFilter).length;
     }, 0);
 });
+
+const newSubtaskTitle = ref('');
+
+const currentTaskSubtasks = computed<Subtask[]>(() => {
+    if (!editingTaskId.value) {
+return [];
+}
+
+    for (const column of localColumns.value) {
+        const task = column.tasks.find(t => t.id === editingTaskId.value);
+
+        if (task) {
+            return task.subtasks || [];
+        }
+    }
+
+    return [];
+});
+
+const handleAddSubtask = () => {
+    if (!newSubtaskTitle.value.trim() || !editingTaskId.value) {
+return;
+}
+
+    router.post(subtasksRoutes.store.url(), {
+        task_id: editingTaskId.value,
+        title: newSubtaskTitle.value.trim()
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            newSubtaskTitle.value = '';
+            toast.success('Subtarefa adicionada!');
+        }
+    });
+};
+
+const toggleSubtask = (subtask: Subtask) => {
+    router.put(subtasksRoutes.update.url(subtask.id), {
+        is_completed: !subtask.is_completed
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            toast.success(subtask.is_completed ? 'Subtarefa desmarcada!' : 'Subtarefa concluída!');
+        }
+    });
+};
+
+const deleteSubtask = (id: number) => {
+    router.delete(subtasksRoutes.destroy.url(id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            toast.success('Subtarefa removida!');
+        }
+    });
+};
+
+const getCompletedSubtasksCount = (task: Task) => {
+    if (!task.subtasks) {
+return 0;
+}
+
+    return task.subtasks.filter((s: Subtask) => s.is_completed).length;
+};
 </script>
 
 <template>
@@ -460,6 +533,14 @@ const filteredTasksCount = computed(() => {
                                             {{ t.description }}
                                         </p>
                                         
+                                        <!-- Subtask mini progress bar -->
+                                        <div v-if="t.subtasks && t.subtasks.length" class="mt-2.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-1 overflow-hidden">
+                                            <div 
+                                                class="bg-indigo-600 dark:bg-indigo-500 h-1 rounded-full transition-all duration-300"
+                                                :style="{ width: `${(getCompletedSubtasksCount(t) / t.subtasks.length) * 100}%` }"
+                                            />
+                                        </div>
+                                        
                                         <!-- Card Footer Details -->
                                         <div class="mt-4 flex flex-wrap gap-2 items-center">
                                             
@@ -467,6 +548,12 @@ const filteredTasksCount = computed(() => {
                                             <span :class="['inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold border tracking-wider uppercase', getPriorityConfig(t.priority).bg]">
                                                 <span :class="['size-1.5 rounded-full', getPriorityConfig(t.priority).dot]" />
                                                 {{ getPriorityConfig(t.priority).label }}
+                                            </span>
+
+                                            <!-- Checklist Progress Badge -->
+                                            <span v-if="t.subtasks && t.subtasks.length" class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border bg-indigo-50/70 text-indigo-700 border-indigo-200/50 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/30 tracking-wide">
+                                                <CheckSquare class="size-3" />
+                                                <span>{{ getCompletedSubtasksCount(t) }}/{{ t.subtasks.length }}</span>
                                             </span>
 
                                             <!-- Due Date Badge -->
@@ -604,16 +691,70 @@ const filteredTasksCount = computed(() => {
                             <option value="high">Alta</option>
                         </select>
                     </div>
-                    <div class="space-y-2">
-                        <Label for="task-due" class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Prazo de Entrega</Label>
-                        <Input 
-                            id="task-due"
-                            v-model="taskForm.due_date" 
-                            type="date" 
-                            class="w-full text-zinc-700 dark:text-zinc-200" 
-                        />
-                    </div>
-                </div>
+                                    <div class="space-y-2">
+                                        <Label for="task-due" class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Prazo de Entrega</Label>
+                                        <Input 
+                                            id="task-due"
+                                            v-model="taskForm.due_date" 
+                                            type="date" 
+                                            class="w-full text-zinc-700 dark:text-zinc-200" 
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <!-- Subtasks checklist editor inside task modal -->
+                                <div v-if="isEditMode" class="border-t border-zinc-200 dark:border-zinc-800 pt-4 space-y-3">
+                                    <Label class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Subtarefas / Checklist</Label>
+                                    
+                                    <!-- Form to add a subtask -->
+                                    <div class="flex gap-2">
+                                        <Input 
+                                            v-model="newSubtaskTitle" 
+                                            type="text" 
+                                            placeholder="Nova subtarefa..." 
+                                            class="flex-1 h-9 text-xs" 
+                                            @keydown.enter.prevent="handleAddSubtask"
+                                        />
+                                        <Button 
+                                            type="button" 
+                                            @click="handleAddSubtask" 
+                                            class="h-9 px-3 text-xs bg-zinc-950 hover:bg-zinc-900 text-white dark:bg-zinc-800 dark:hover:bg-zinc-700 font-medium"
+                                        >
+                                            Adicionar
+                                        </Button>
+                                    </div>
+
+                                    <!-- List of current subtasks -->
+                                    <div class="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                                        <div 
+                                            v-for="sub in currentTaskSubtasks" 
+                                            :key="sub.id" 
+                                            class="flex items-center justify-between gap-2 p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900/50 text-xs border border-zinc-150 dark:border-zinc-800"
+                                        >
+                                            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0 select-none">
+                                                <input 
+                                                    type="checkbox" 
+                                                    :checked="sub.is_completed" 
+                                                    @change="toggleSubtask(sub)"
+                                                    class="rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <span :class="['truncate', sub.is_completed ? 'line-through text-zinc-400 dark:text-zinc-500' : 'text-zinc-700 dark:text-zinc-300']">
+                                                    {{ sub.title }}
+                                                </span>
+                                            </label>
+                                            <button 
+                                                type="button" 
+                                                @click="deleteSubtask(sub.id)" 
+                                                class="text-zinc-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/20 transition"
+                                            >
+                                                <Trash2 class="size-3.5" />
+                                            </button>
+                                        </div>
+                                        <div v-if="!currentTaskSubtasks.length" class="text-center py-4 text-xs text-zinc-450 dark:text-zinc-500 italic">
+                                            Nenhuma subtarefa adicionada.
+                                        </div>
+                                    </div>
+                                </div>
                 
                 <DialogFooter class="pt-4">
                     <Button type="button" variant="ghost" @click="isTaskModalOpen = false">Cancelar</Button>
