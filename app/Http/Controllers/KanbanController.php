@@ -75,6 +75,7 @@ class KanbanController extends Controller
         ]);
 
         // Garante que a coluna informada realmente pertence ao usuário logado
+        /** @var Column $column */
         $column = $request->user()->columns()->findOrFail($validated['column_id']);
 
         // Pega a maior posição atual e soma 1. Evita falhas na ordenação.

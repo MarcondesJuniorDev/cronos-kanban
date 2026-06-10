@@ -24,7 +24,7 @@ class TaskFactory extends Factory
             'description' => fake()->paragraph(),
             'position' => 0,
             'priority' => fake()->randomElement(['low', 'medium', 'high']),
-            'due_date' => fake()->optional()->dateTimeBetween('now', '+1 month')?->format('Y-m-d'),
+            'due_date' => fake()->boolean(80) ? fake()->dateTimeBetween('now', '+1 month')->format('Y-m-d') : null,
             'column_id' => Column::factory(),
             'user_id' => User::factory(),
         ];

@@ -49,11 +49,17 @@ class User extends Authenticatable implements PasskeyUser
         ];
     }
 
+    /**
+     * @return HasMany<Column, $this>
+     */
     public function columns(): HasMany
     {
         return $this->hasMany(Column::class);
     }
 
+    /**
+     * @return HasMany<Task, $this>
+     */
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class);
