@@ -5,7 +5,7 @@ import { register } from '@/routes';
 </script>
 
 <template>
-    <Head title="Welcome">
+    <Head title="Bem-vindo(a)">
         <link rel="preconnect" href="https://rsms.me/" />
         <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
     </Head>
@@ -68,13 +68,13 @@ import { register } from '@/routes';
                                 </span>
                             </span>
                             <span>
-                                Read the
+                                Leia a
                                 <a
                                     href="https://laravel.com/docs"
                                     target="_blank"
                                     class="ml-1 inline-flex items-center space-x-1 font-medium text-[#f53003] underline underline-offset-4 dark:text-[#FF4433]"
                                 >
-                                    <span>Documentation</span>
+                                    <span>Documentação</span>
                                     <svg
                                         width="10"
                                         height="11"
@@ -107,7 +107,7 @@ import { register } from '@/routes';
                                 </span>
                             </span>
                             <span>
-                                Watch video tutorials at
+                                Assista aos tutoriais em vídeo no
                                 <a
                                     href="https://laracasts.com"
                                     target="_blank"
@@ -139,7 +139,7 @@ import { register } from '@/routes';
                                 target="_blank"
                                 class="inline-block rounded-sm border border-black bg-[#1b1b18] px-5 py-1.5 text-sm leading-normal text-white hover:border-black hover:bg-black dark:border-[#eeeeec] dark:bg-[#eeeeec] dark:text-[#1C1C1A] dark:hover:border-white dark:hover:bg-white"
                             >
-                                Deploy now
+                                Implantar agora
                             </a>
                         </li>
                     </ul>

@@ -272,7 +272,7 @@ return false;
                     <span class="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
                         <Kanban class="size-4" />
                     </span>
-                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-400">Workspace</p>
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-400">Espaço de Trabalho</p>
                 </div>
                 <h2 class="mt-1.5 text-3xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50">
                     Cronos Kanban
