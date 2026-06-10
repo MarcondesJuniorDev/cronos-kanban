@@ -737,6 +737,29 @@ return 0;
                                                 :style="{ width: `${(getCompletedSubtasksCount(t) / t.subtasks.length) * 100}%` }"
                                             />
                                         </div>
+
+                                        <!-- Subtasks List on Card -->
+                                        <div v-if="t.subtasks && t.subtasks.length" class="mt-3.5 space-y-1.5 border-t border-zinc-150 dark:border-zinc-800/60 pt-2.5">
+                                            <div 
+                                                v-for="sub in t.subtasks" 
+                                                :key="sub.id" 
+                                                class="flex items-center gap-2 text-xs"
+                                                @click.stop
+                                            >
+                                                <input 
+                                                    type="checkbox" 
+                                                    :checked="sub.is_completed" 
+                                                    @change="toggleSubtask(sub)"
+                                                    class="rounded border-zinc-350 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-3.5 w-3.5"
+                                                />
+                                                <span 
+                                                    :class="['truncate select-none cursor-pointer flex-1 transition duration-150', sub.is_completed ? 'line-through text-zinc-400 dark:text-zinc-500' : 'text-zinc-700 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400']"
+                                                    @click="toggleSubtask(sub)"
+                                                >
+                                                    {{ sub.title }}
+                                                </span>
+                                            </div>
+                                        </div>
                                         
                                         <!-- Card Footer Details -->
                                         <div class="mt-4 flex flex-wrap gap-2 items-center">
